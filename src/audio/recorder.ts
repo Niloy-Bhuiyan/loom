@@ -50,8 +50,11 @@ export class MicRecorder {
     this.analyser.fftSize = 1024;
     this.node = new AudioWorkletNode(this.ctx, 'loom-capture');
     this.node.port.onmessage = (e: MessageEvent<Float32Array>) => this.chunks.push(e.data);
+    // Chain everything to the destination so the browser keeps pulling audio through it.
+    // The worklet never writes its output, so nothing is audible.
     source.connect(this.analyser);
-    source.connect(this.node);
+    this.analyser.connect(this.node);
+    this.node.connect(this.ctx.destination);
   }
 
   /** Stop recording; resolves with 16 kHz mono audio ready for Whisper. */
