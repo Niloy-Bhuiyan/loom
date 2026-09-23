@@ -722,6 +722,19 @@ a {
   background: var(--surface-2);
 }
 
+.field-check label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.field-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
 .field small {
   color: var(--faint);
   font-size: 0.78rem;

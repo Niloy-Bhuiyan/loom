@@ -39,6 +39,13 @@ export function openSettings(opts: SettingsPanelOptions): void {
   );
   const voice = select('set-voice', SUPERTONIC_VOICES.map((v) => [v.id, v.label]), settings.voice);
   const voiceField = h('div', { class: 'field' }, h('label', { for: 'set-voice' }, 'Supertonic voice'), voice);
+  const f16 = h('input', { type: 'checkbox', id: 'set-f16', checked: caps.shaderF16 && settings.f16, disabled: !caps.shaderF16 });
+  const f16Field = h(
+    'div',
+    { class: 'field field-check' },
+    h('label', { for: 'set-f16' }, f16, ' Use 16-bit GPU math'),
+    h('small', {}, caps.shaderF16 ? 'Smaller and faster. Turn off if replies come out garbled on your GPU.' : 'Not supported by this GPU.'),
+  );
 
   const syncNotes = () => {
     llmNote.textContent = LLM_PRESETS.find((p) => p.id === llm.value)?.note ?? '';
@@ -62,6 +69,7 @@ export function openSettings(opts: SettingsPanelOptions): void {
       h('div', { class: 'field' }, h('label', { for: 'set-llm' }, 'Language model (brain)'), llm, llmNote),
       h('div', { class: 'field' }, h('label', { for: 'set-tts' }, 'Voice engine'), tts, h('small', {}, `In use now: ${opts.activeTts}`)),
       voiceField,
+      f16Field,
       h(
         'div',
         { class: 'card-actions' },
@@ -71,7 +79,14 @@ export function openSettings(opts: SettingsPanelOptions): void {
             class: 'btn btn-primary',
             onclick: () => {
               close();
-              opts.onApply({ stt: stt.value, llm: llm.value, tts: tts.value as TtsEngine, voice: voice.value });
+              opts.onApply({
+                stt: stt.value,
+                llm: llm.value,
+                tts: tts.value as TtsEngine,
+                voice: voice.value,
+                // Keep the stored preference when the GPU can't do f16 at all.
+                f16: caps.shaderF16 ? f16.checked : settings.f16,
+              });
             },
           },
           'Apply',
@@ -97,7 +112,7 @@ export function openSettings(opts: SettingsPanelOptions): void {
         h('dt', {}, 'GPU'),
         h('dd', {}, caps.adapterName ?? 'unknown'),
         h('dt', {}, 'shader-f16'),
-        h('dd', {}, caps.shaderF16 ? 'yes (q4f16 weights)' : 'no (q4 weights)'),
+        h('dd', {}, caps.shaderF16 ? (settings.f16 ? 'yes (q4f16 weights)' : 'yes, but off (q4 weights)') : 'no (q4 weights)'),
         h('dt', {}, 'Inference'),
         h('dd', {}, 'WebGPU, in this tab'),
       ),
