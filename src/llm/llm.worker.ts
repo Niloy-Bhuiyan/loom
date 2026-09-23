@@ -5,25 +5,15 @@ import {
   type TextGenerationPipeline,
 } from '@huggingface/transformers';
 import type { ModelProgressEvent } from '../core/progress';
-import type { ChatMessage } from '../pipeline/types';
 import { reportCacheStatus } from '../workers/cache-status';
 import { serveWorker } from '../workers/host';
-
-export interface LlmConfig {
-  model: string;
-  dtype: string;
-}
-
-export interface LlmRequest {
-  messages: ChatMessage[];
-  maxNewTokens: number;
-}
+import { SELF_TEST_FAILED, type LlmConfig, type LlmRequest } from './protocol';
 
 let generator: TextGenerationPipeline | null = null;
 const stopping = new InterruptableStoppingCriteria();
 
 serveWorker<LlmConfig, LlmRequest, string, string>({
-  async load({ model, dtype }, ctx) {
+  async load({ model, dtype, selfTest }, ctx) {
     await reportCacheStatus('text-generation', model, { dtype: dtype as never, device: 'webgpu' }, ctx);
     generator = (await pipeline('text-generation', model, {
       device: 'webgpu',
@@ -31,8 +21,19 @@ serveWorker<LlmConfig, LlmRequest, string, string>({
       progress_callback: (info) => ctx.progress(info as ModelProgressEvent),
     })) as TextGenerationPipeline;
 
+    // The warm-up doubles as a sanity check: some GPU/driver combos advertise
+    // shader-f16 but compute garbage with it, which shows up as nonsense replies.
     ctx.phase('Warming up GPU');
-    await generator([{ role: 'user', content: 'Hi' }], { max_new_tokens: 1 });
+    const [output] = (await generator([{ role: 'user', content: 'What is 2 + 2? Reply with just the number.' }], {
+      max_new_tokens: 6,
+      do_sample: false,
+    })) as { generated_text: { content: string }[] }[];
+    const answer = output?.generated_text.at(-1)?.content ?? '';
+    if (selfTest && !/\b4\b|four/i.test(answer)) {
+      await generator.dispose();
+      generator = null;
+      throw new Error(`${SELF_TEST_FAILED}: ${JSON.stringify(answer)}`);
+    }
     return 'webgpu';
   },
 
