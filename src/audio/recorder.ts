@@ -1,11 +1,32 @@
 import { concatChunks, resample } from './pcm';
 
-/** Copies raw microphone samples to the main thread. Inlined so no extra file needs serving. */
+/**
+ * Copies raw microphone samples out of the audio thread. Inlined so no extra
+ * file needs serving. By default chunks go to the main thread; if given a
+ * `sink` port (hands-free mode) they are batched and streamed there instead.
+ */
 const CAPTURE_WORKLET = `
 class LoomCapture extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.sink = null;
+    this.batch = new Float32Array(2048);
+    this.filled = 0;
+    this.port.onmessage = (e) => { if (e.data && e.data.sink) this.sink = e.data.sink; };
+  }
   process(inputs) {
     const channel = inputs[0] && inputs[0][0];
-    if (channel) this.port.postMessage(channel.slice(0));
+    if (!channel) return true;
+    if (!this.sink) {
+      this.port.postMessage(channel.slice(0));
+      return true;
+    }
+    if (this.filled + channel.length > this.batch.length) {
+      this.sink.postMessage(this.batch.slice(0, this.filled));
+      this.filled = 0;
+    }
+    this.batch.set(channel, this.filled);
+    this.filled += channel.length;
     return true;
   }
 }
@@ -14,8 +35,8 @@ registerProcessor('loom-capture', LoomCapture);
 
 /**
  * Records the microphone as raw PCM and exposes an analyser for the live
- * waveform. The mic is released after every turn so the browser's recording
- * indicator is only on while you are actually talking.
+ * waveform. In push-to-talk mode the mic is released after every turn, so the
+ * browser's recording indicator is only on while you are actually talking.
  */
 export class MicRecorder {
   private ctx: AudioContext | null = null;
@@ -24,11 +45,16 @@ export class MicRecorder {
   private chunks: Float32Array[] = [];
   analyser: AnalyserNode | null = null;
 
-  get recording(): boolean {
-    return this.stream !== null;
+  /** The mic's native sample rate (valid after start()). */
+  get sampleRate(): number {
+    return this.ctx?.sampleRate ?? 48_000;
   }
 
-  async start(): Promise<void> {
+  /**
+   * Open the mic. With a `sink` port, audio is streamed to it continuously
+   * (hands-free); otherwise it's buffered until stop().
+   */
+  async start(sink?: MessagePort): Promise<void> {
     if (this.stream) return;
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -49,7 +75,8 @@ export class MicRecorder {
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 1024;
     this.node = new AudioWorkletNode(this.ctx, 'loom-capture');
-    this.node.port.onmessage = (e: MessageEvent<Float32Array>) => this.chunks.push(e.data);
+    if (sink) this.node.port.postMessage({ sink }, [sink]);
+    else this.node.port.onmessage = (e: MessageEvent<Float32Array>) => this.chunks.push(e.data);
     // Chain everything to the destination so the browser keeps pulling audio through it.
     // The worklet never writes its output, so nothing is audible.
     source.connect(this.analyser);
@@ -57,7 +84,7 @@ export class MicRecorder {
     this.node.connect(this.ctx.destination);
   }
 
-  /** Stop recording; resolves with 16 kHz mono audio ready for Whisper. */
+  /** Stop recording; resolves with 16 kHz mono audio ready for Whisper (empty when streaming). */
   async stop(): Promise<Float32Array> {
     if (!this.stream || !this.ctx) return new Float32Array();
     this.node?.port.close();
