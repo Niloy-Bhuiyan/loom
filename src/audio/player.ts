@@ -10,13 +10,10 @@ export class PcmPlayer {
   private active = new Set<AudioBufferSourceNode>();
   private idleWaiters: (() => void)[] = [];
 
-  /** Must be called from a user gesture at least once so autoplay policies allow sound. */
-  unlock(): void {
-    void this.context().resume();
-  }
-
   play(samples: Float32Array, sampleRate: number): void {
     const ctx = this.context();
+    // Contexts created outside a click start suspended; the page has had a click by now.
+    if (ctx.state === 'suspended') void ctx.resume();
     const buffer = ctx.createBuffer(1, samples.length, sampleRate);
     buffer.copyToChannel(samples as Float32Array<ArrayBuffer>, 0);
 
