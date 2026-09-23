@@ -63,6 +63,8 @@ export function bindTalkControls(button: HTMLButtonElement, handlers: TalkHandle
   });
   window.addEventListener('keyup', (e) => {
     if (e.code !== 'Space' || !spaceDown) return;
+    // Otherwise a focused button would also receive a synthetic click and restart recording.
+    e.preventDefault();
     spaceDown = false;
     handlers.stop();
   });
