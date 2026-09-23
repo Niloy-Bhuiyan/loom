@@ -312,7 +312,8 @@ a {
   height: 30px;
   margin-top: 2px;
   border-radius: 10px;
-  background: var(--surface-2) url('/favicon.svg') center / 22px no-repeat;
+  padding: 3px;
+  background: var(--surface-2);
   border: 1px solid var(--border);
 }
 
