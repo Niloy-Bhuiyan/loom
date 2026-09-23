@@ -2,9 +2,11 @@ import './styles.css';
 import { App } from './app';
 import { loadSettings } from './config/settings';
 import { detectCapabilities } from './core/capabilities';
+import { registerServiceWorker } from './core/service-worker';
 import { unsupportedScreen } from './ui/dialogs';
 
 async function main(): Promise<void> {
+  registerServiceWorker();
   const root = document.querySelector<HTMLDivElement>('#app')!;
   const caps = await detectCapabilities();
 
