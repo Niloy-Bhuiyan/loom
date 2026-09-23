@@ -6,6 +6,7 @@ import {
 } from '@huggingface/transformers';
 import type { ModelProgressEvent } from '../core/progress';
 import type { ChatMessage } from '../pipeline/types';
+import { reportCacheStatus } from '../workers/cache-status';
 import { serveWorker } from '../workers/host';
 
 export interface LlmConfig {
@@ -23,6 +24,7 @@ const stopping = new InterruptableStoppingCriteria();
 
 serveWorker<LlmConfig, LlmRequest, string, string>({
   async load({ model, dtype }, ctx) {
+    await reportCacheStatus('text-generation', model, { dtype: dtype as never, device: 'webgpu' }, ctx);
     generator = (await pipeline('text-generation', model, {
       device: 'webgpu',
       dtype: dtype as never,

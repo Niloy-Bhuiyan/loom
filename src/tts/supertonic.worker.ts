@@ -1,5 +1,6 @@
 import { pipeline, type TextToAudioPipeline } from '@huggingface/transformers';
 import type { ModelProgressEvent } from '../core/progress';
+import { reportCacheStatus } from '../workers/cache-status';
 import { serveWorker } from '../workers/host';
 
 export interface SupertonicConfig {
@@ -56,6 +57,7 @@ async function synthesize(text: string, voice: string): Promise<SupertonicAudio>
 serveWorker<SupertonicConfig, SupertonicRequest, SupertonicAudio, never>({
   async load({ model, voice }, ctx) {
     modelId = model;
+    await reportCacheStatus('text-to-speech', model, { device: 'webgpu' }, ctx);
     synthesizer = (await pipeline('text-to-speech', model, {
       device: 'webgpu',
       progress_callback: (info) => ctx.progress(info as ModelProgressEvent),

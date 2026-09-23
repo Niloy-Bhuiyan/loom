@@ -14,8 +14,12 @@ export type ModelProgressEvent =
  * Aggregates per-file download events into one progress value for a stage.
  * Files are fetched in parallel, so we sum bytes across all of them.
  */
+export const PHASE_DOWNLOADING = 'Downloading';
+export const PHASE_FROM_CACHE = 'Loading from cache';
+
 export class ProgressTracker {
   private files = new Map<string, { loaded: number; total: number }>();
+  private phase = PHASE_DOWNLOADING;
 
   update(event: ModelProgressEvent): LoadProgress {
     if (event.status === 'progress') {
@@ -27,7 +31,9 @@ export class ProgressTracker {
     return this.snapshot();
   }
 
-  snapshot(phase = 'Downloading'): LoadProgress {
+  /** Current progress; passing a phase makes it the phase for later updates too. */
+  snapshot(phase?: string): LoadProgress {
+    if (phase) this.phase = phase;
     let loaded = 0;
     let total = 0;
     for (const f of this.files.values()) {
@@ -38,7 +44,7 @@ export class ProgressTracker {
       fraction: total > 0 ? Math.min(1, loaded / total) : null,
       loadedBytes: loaded,
       totalBytes: total,
-      phase,
+      phase: this.phase,
     };
   }
 }

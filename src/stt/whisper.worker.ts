@@ -1,5 +1,6 @@
 import { pipeline, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers';
 import type { ModelProgressEvent } from '../core/progress';
+import { reportCacheStatus } from '../workers/cache-status';
 import { serveWorker } from '../workers/host';
 
 export interface WhisperConfig {
@@ -11,6 +12,7 @@ let transcriber: AutomaticSpeechRecognitionPipeline | null = null;
 
 serveWorker<WhisperConfig, Float32Array, string, never>({
   async load({ model, dtype }, ctx) {
+    await reportCacheStatus('automatic-speech-recognition', model, { dtype: dtype as never, device: 'webgpu' }, ctx);
     transcriber = (await pipeline('automatic-speech-recognition', model, {
       device: 'webgpu',
       dtype: dtype as never,

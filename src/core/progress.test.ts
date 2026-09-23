@@ -21,6 +21,13 @@ describe('ProgressTracker', () => {
     expect(t.update({ status: 'done', file: 'a.onnx' }).fraction).toBe(1);
   });
 
+  it('keeps the latest phase for subsequent updates', () => {
+    const t = new ProgressTracker();
+    t.snapshot('Loading from cache');
+    expect(t.update({ status: 'progress', file: 'a', loaded: 1, total: 2 }).phase).toBe('Loading from cache');
+    expect(t.snapshot().phase).toBe('Loading from cache');
+  });
+
   it('ignores unrelated events', () => {
     const t = new ProgressTracker();
     expect(t.update({ status: 'initiate', file: 'x' }).fraction).toBeNull();
