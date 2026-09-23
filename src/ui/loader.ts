@@ -1,4 +1,4 @@
-import { formatBytes } from '../core/progress';
+import { formatBytes, PHASE_DOWNLOADING, PHASE_FROM_CACHE } from '../core/progress';
 import type { LoadProgress } from '../pipeline/types';
 import { h } from './dom';
 import { icon, type IconName } from './icons';
@@ -41,12 +41,19 @@ class StageRow {
 
   update(p: LoadProgress): void {
     this.el.dataset.status = 'loading';
-    const downloading = p.fraction !== null && p.fraction < 1 && p.phase === 'Downloading';
-    this.bar.classList.toggle('indeterminate', p.fraction === null || !downloading);
-    this.fill.style.width = `${Math.round((p.fraction ?? 0) * 100)}%`;
-    this.bar.setAttribute('aria-valuenow', String(Math.round((p.fraction ?? 0) * 100)));
+    const pct = Math.round((p.fraction ?? 0) * 100);
+    const fetching = p.phase === PHASE_DOWNLOADING || p.phase === PHASE_FROM_CACHE;
+    const determinate = fetching && p.fraction !== null && p.fraction < 1;
+    this.bar.classList.toggle('indeterminate', !determinate);
+    this.fill.style.width = `${pct}%`;
+    this.bar.setAttribute('aria-valuenow', String(pct));
     if (p.totalBytes > 0) this.meta.textContent = `${formatBytes(p.loadedBytes)} / ${formatBytes(p.totalBytes)}`;
-    this.phase.textContent = downloading ? `Downloading… ${Math.round(p.fraction! * 100)}%` : `${p.phase}…`;
+    // Once every byte is in, Transformers.js is building GPU sessions, which can take a while.
+    this.phase.textContent = determinate
+      ? `${p.phase}… ${pct}%`
+      : fetching && p.fraction === 1
+        ? 'Initializing on the GPU…'
+        : `${p.phase}…`;
   }
 
   setStatus(status: StageStatus, text: string): void {
@@ -105,7 +112,7 @@ export class LoaderPanel {
   showLoading(fromCache: boolean): void {
     this.heading.textContent = fromCache ? 'Starting Loom' : 'Downloading models';
     this.intro.textContent = fromCache
-      ? 'Loading models from your browser cache and warming up the GPU. No download needed.'
+      ? 'Loading models from your browser cache and warming up the GPU. Anything the browser has evicted is downloaded again.'
       : 'This happens once. Keep this tab open — you can watch each model arrive below.';
     this.actions.replaceChildren();
   }
