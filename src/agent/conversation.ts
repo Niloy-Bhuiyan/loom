@@ -40,6 +40,8 @@ export class Conversation {
   private state: AgentState = 'idle';
   /** Incremented on every new turn / interruption; stale async work checks it and bails. */
   private turn = 0;
+  /** Text streamed so far for the reply being generated; null when no generation is running. */
+  private streamed: string | null = null;
 
   constructor(
     private stages: Stages,
@@ -113,6 +115,13 @@ export class Conversation {
     this.turn++;
     this.stages.llm.interrupt();
     this.stages.tts.stop();
+    // Close out a half-written reply now, so it can't land after the next turn has started.
+    if (this.streamed !== null) {
+      const partial = this.streamed.trim();
+      if (partial) this.history.push({ role: 'assistant', content: partial });
+      this.events.onAssistantEnd(partial, true);
+      this.streamed = null;
+    }
     this.setState('idle');
   }
 
@@ -133,16 +142,19 @@ export class Conversation {
       }
     };
 
+    this.streamed = '';
     const reply = await this.stages.llm.generate(buildMessages(this.history), (token) => {
       if (turn !== this.turn) return;
+      this.streamed += token;
       this.events.onAssistantToken(token);
       say(chunker.push(token));
     });
+    // If interrupted, interrupt() already recorded the partial reply.
+    if (turn !== this.turn) return;
 
-    const interrupted = turn !== this.turn;
+    this.streamed = null;
     if (reply) this.history.push({ role: 'assistant', content: reply });
-    this.events.onAssistantEnd(reply, interrupted);
-    if (interrupted) return;
+    this.events.onAssistantEnd(reply, false);
 
     say(chunker.flush());
     await this.stages.tts.drain();

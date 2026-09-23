@@ -108,6 +108,36 @@ describe('Conversation', () => {
     expect(ctx.log.at(-1)).toBe('assistant:Partial (interrupted)');
   });
 
+  it('closes an interrupted reply before the next turn starts', async () => {
+    const ctx = setup();
+    let finishFirst: (reply: string) => void = () => {};
+    vi.mocked(ctx.llm.generate)
+      .mockImplementationOnce(async (_m, onToken) => {
+        onToken('Half an ans');
+        return new Promise<string>((resolve) => (finishFirst = resolve));
+      })
+      .mockImplementationOnce(async (_m, onToken) => {
+        onToken('Second.');
+        return 'Second.';
+      });
+
+    const first = ctx.convo.sendText('one');
+    await vi.waitFor(() => expect(ctx.convo.current).toBe('thinking'));
+    const second = ctx.convo.sendText('two');
+    finishFirst('Half an answer'); // the stale generation resolves late
+    await Promise.all([first, second]);
+
+    expect(ctx.log).toEqual([
+      'user:one',
+      'assistant:start',
+      'assistant:Half an ans (interrupted)',
+      'user:two',
+      'assistant:start',
+      'assistant:Second.',
+    ]);
+    expect(ctx.convo.history.map((m) => m.content)).toEqual(['one', 'Half an ans', 'two', 'Second.']);
+  });
+
   it('answers typed messages without speech recognition', async () => {
     const { convo, stt, spoken, log } = setup();
     await convo.sendText('  typed question ');
