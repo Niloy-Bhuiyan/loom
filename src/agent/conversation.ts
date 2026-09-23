@@ -82,18 +82,39 @@ export class Conversation {
         this.events.onNotice('I didn’t hear anything — hold the button and speak.');
         return this.finish(turn);
       }
-
-      const text = await this.stages.stt.transcribe(audio);
-      if (turn !== this.turn) return;
-      if (!text) {
-        this.events.onNotice('Sorry, I didn’t catch that. Try again?');
-        return this.finish(turn);
-      }
-
-      await this.reply(turn, text);
+      await this.transcribeAndReply(turn, audio, false);
     } catch (err) {
       this.fail(turn, err);
     }
+  }
+
+  /** Hands-free: voice detection heard the user start talking. Cuts Loom off if it was busy. */
+  userStartedSpeaking(): void {
+    this.interrupt();
+    if (this.state === 'idle') this.setState('listening');
+  }
+
+  /** Hands-free: a complete utterance detected by voice activity detection. */
+  async submitUtterance(audio: Float32Array): Promise<void> {
+    this.interrupt();
+    const turn = ++this.turn;
+    this.setState('transcribing');
+    try {
+      await this.transcribeAndReply(turn, audio, true);
+    } catch (err) {
+      this.fail(turn, err);
+    }
+  }
+
+  /** Transcribe, then answer. `quiet` skips the "didn't catch that" notice (background noise in hands-free). */
+  private async transcribeAndReply(turn: number, audio: Float32Array, quiet: boolean): Promise<void> {
+    const text = await this.stages.stt.transcribe(audio);
+    if (turn !== this.turn) return;
+    if (!text) {
+      if (!quiet) this.events.onNotice('Sorry, I didn’t catch that. Try again?');
+      return this.finish(turn);
+    }
+    await this.reply(turn, text);
   }
 
   /** Send a typed message (skips speech recognition; the reply is still spoken). */

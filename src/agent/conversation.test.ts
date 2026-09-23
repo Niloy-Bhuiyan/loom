@@ -138,6 +138,42 @@ describe('Conversation', () => {
     expect(ctx.convo.history.map((m) => m.content)).toEqual(['one', 'Half an ans', 'two', 'Second.']);
   });
 
+  describe('hands-free', () => {
+    it('runs a turn from a detected utterance', async () => {
+      const { convo, states, spoken } = setup();
+      convo.userStartedSpeaking();
+      await convo.submitUtterance(speech());
+      expect(states).toEqual(['listening', 'transcribing', 'thinking', 'speaking', 'idle']);
+      expect(spoken).toEqual(['Hi there.', 'How can I help?']);
+    });
+
+    it('stays quiet when background noise transcribes to nothing', async () => {
+      const { convo, log, states } = setup({ transcript: '' });
+      await convo.submitUtterance(speech());
+      expect(log).toEqual([]);
+      expect(states.at(-1)).toBe('idle');
+    });
+
+    it('lets the user cut Loom off by speaking', async () => {
+      const ctx = setup();
+      let finish: (reply: string) => void = () => {};
+      vi.mocked(ctx.llm.generate).mockImplementationOnce(async (_m, onToken) => {
+        onToken('Long answer');
+        return new Promise<string>((resolve) => (finish = resolve));
+      });
+      const turn = ctx.convo.submitUtterance(speech());
+      await vi.waitFor(() => expect(ctx.convo.current).toBe('thinking'));
+
+      ctx.convo.userStartedSpeaking();
+      finish('Long answer');
+      await turn;
+
+      expect(ctx.convo.current).toBe('listening');
+      expect(ctx.tts.stop).toHaveBeenCalled();
+      expect(ctx.log.at(-1)).toBe('assistant:Long answer (interrupted)');
+    });
+  });
+
   it('answers typed messages without speech recognition', async () => {
     const { convo, stt, spoken, log } = setup();
     await convo.sendText('  typed question ');
