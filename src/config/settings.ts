@@ -14,6 +14,8 @@ export interface Settings {
   llm: string;
   tts: TtsEngine;
   voice: string;
+  /** Allow 16-bit GPU math when supported. Turned off automatically if it proves broken on this GPU. */
+  f16: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -21,6 +23,7 @@ export const DEFAULT_SETTINGS: Settings = {
   llm: DEFAULT_LLM,
   tts: DEFAULT_TTS,
   voice: DEFAULT_VOICE,
+  f16: true,
 };
 
 const STORAGE_KEY = 'loom.settings.v1';
@@ -36,6 +39,7 @@ export function parseSettings(raw: unknown): Settings {
     llm: pick(s.llm, LLM_PRESETS.map((p) => p.id), DEFAULT_SETTINGS.llm),
     tts: pick(s.tts, ['supertonic', 'web-speech'], DEFAULT_SETTINGS.tts) as TtsEngine,
     voice: pick(s.voice, SUPERTONIC_VOICES.map((v) => v.id), DEFAULT_SETTINGS.voice),
+    f16: typeof s.f16 === 'boolean' ? s.f16 : DEFAULT_SETTINGS.f16,
   };
 }
 

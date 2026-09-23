@@ -47,7 +47,11 @@ export class App {
     this.layout.stage.append(this.transcript.el);
 
     this.stt = new WhisperSTT(findStt(settings.stt));
-    this.llm = new TransformersLLM(findLlm(settings.llm), caps.shaderF16);
+    this.llm = new TransformersLLM(findLlm(settings.llm), caps.shaderF16 && settings.f16, () => {
+      this.settings = { ...this.settings, f16: false };
+      saveSettings(this.settings);
+      this.transcript.addNotice('Your GPU’s 16-bit math gave wrong results, so Loom switched to 32-bit weights. This is remembered for next time.');
+    });
     this.tts = createTts(settings);
 
     this.conversation = new Conversation({ stt: this.stt, llm: this.llm, tts: this.tts }, this.recorder, {
@@ -228,7 +232,7 @@ export class App {
     this.settings = next;
     saveSettings(next);
 
-    const onlyVoiceChanged = prev.stt === next.stt && prev.llm === next.llm && prev.tts === next.tts;
+    const onlyVoiceChanged = prev.stt === next.stt && prev.llm === next.llm && prev.tts === next.tts && prev.f16 === next.f16;
     if (onlyVoiceChanged && this.tts instanceof SupertonicTTS) {
       this.tts.voice = next.voice;
       this.transcript.addNotice(`Voice changed to ${next.voice}.`);
