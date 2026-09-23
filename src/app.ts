@@ -19,11 +19,11 @@ import { Transcript } from './ui/transcript';
 import { Waveform } from './ui/waveform';
 
 const STATUS: Record<AgentState, string> = {
-  idle: 'Hold to talk, or tap to start and tap again to send · <kbd>Space</kbd>',
+  idle: 'Hold to talk, or tap to start and tap again to send<span class="kbd-hint"> · or hold <kbd>Space</kbd></span>',
   listening: 'Listening… release (or tap) to send',
   transcribing: 'Transcribing on your GPU…',
   thinking: 'Thinking… tap to interrupt',
-  speaking: 'Speaking… tap to interrupt · <kbd>Esc</kbd> to stop',
+  speaking: 'Speaking… tap to interrupt<span class="kbd-hint"> · <kbd>Esc</kbd> to stop</span>',
 };
 
 export class App {

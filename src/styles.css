@@ -232,6 +232,8 @@ a {
   gap: 14px;
   padding: 8px 2px 24px;
   scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
   mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 24px), transparent 100%);
 }
 
@@ -477,6 +479,13 @@ a {
   background: var(--surface);
   font-family: var(--mono);
   font-size: 0.78rem;
+}
+
+/* Keyboard shortcuts mean nothing on touch screens. */
+@media (hover: none) {
+  .kbd-hint {
+    display: none;
+  }
 }
 
 .type-form {
