@@ -31,6 +31,10 @@ describe('SentenceChunker', () => {
     expect(chunkAll(['She said "hi." Then left.'])).toEqual(['She said "hi."', 'Then left.']);
   });
 
+  it('keeps closing markdown emphasis with its sentence', () => {
+    expect(chunkAll(['**Sure!** Here.'])).toEqual(['**Sure!**', 'Here.']);
+  });
+
   it('soft-splits very long runs at a comma', () => {
     const long = 'word '.repeat(30) + 'and then, ' + 'more '.repeat(20);
     const chunker = new SentenceChunker();

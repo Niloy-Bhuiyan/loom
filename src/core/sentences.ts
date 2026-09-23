@@ -34,10 +34,10 @@ export class SentenceChunker {
 
 /** Index just past the first sentence boundary in `text`, or -1. */
 function findBoundary(text: string): number {
-  // A sentence ends at . ! ? or … (plus closing quotes/brackets) followed by
+  // A sentence ends at . ! ? or … (plus closing quotes/brackets/markdown) followed by
   // whitespace, or at a newline. Requiring trailing whitespace means we never
   // split "3.14" or a word that is still streaming in.
-  const re = /[.!?…]+["'”’)\]]*(?=\s)|\n+/g;
+  const re = /[.!?…]+["'”’)\]*_]*(?=\s)|\n+/g;
   let match: RegExpExecArray | null;
   while ((match = re.exec(text)) !== null) {
     const end = match.index + match[0].length;
