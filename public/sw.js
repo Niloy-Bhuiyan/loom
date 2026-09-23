@@ -6,7 +6,7 @@
 const SHELL_CACHE = 'loom-shell-v1';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(['./', './index.html'])));
+  event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(['./', './index.html', './favicon.svg'])));
   self.skipWaiting();
 });
 
