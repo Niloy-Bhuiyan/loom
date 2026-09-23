@@ -16,7 +16,11 @@ export interface Settings {
   voice: string;
   /** Allow 16-bit GPU math when supported. Turned off automatically if it proves broken on this GPU. */
   f16: boolean;
+  /** Hands-free (voice detection, like a phone call) or push-to-talk. */
+  talkMode: TalkMode;
 }
+
+export type TalkMode = 'hands-free' | 'push';
 
 export const DEFAULT_SETTINGS: Settings = {
   stt: DEFAULT_STT,
@@ -24,6 +28,7 @@ export const DEFAULT_SETTINGS: Settings = {
   tts: DEFAULT_TTS,
   voice: DEFAULT_VOICE,
   f16: true,
+  talkMode: 'hands-free',
 };
 
 const STORAGE_KEY = 'loom.settings.v1';
@@ -40,6 +45,7 @@ export function parseSettings(raw: unknown): Settings {
     tts: pick(s.tts, ['supertonic', 'web-speech'], DEFAULT_SETTINGS.tts) as TtsEngine,
     voice: pick(s.voice, SUPERTONIC_VOICES.map((v) => v.id), DEFAULT_SETTINGS.voice),
     f16: typeof s.f16 === 'boolean' ? s.f16 : DEFAULT_SETTINGS.f16,
+    talkMode: pick(s.talkMode, ['hands-free', 'push'], DEFAULT_SETTINGS.talkMode) as TalkMode,
   };
 }
 

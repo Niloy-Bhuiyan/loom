@@ -80,6 +80,7 @@ export function openSettings(opts: SettingsPanelOptions): void {
             onclick: () => {
               close();
               opts.onApply({
+                ...settings,
                 stt: stt.value,
                 llm: llm.value,
                 tts: tts.value as TtsEngine,

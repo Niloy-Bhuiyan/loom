@@ -9,8 +9,8 @@ describe('parseSettings', () => {
   });
 
   it('keeps known values', () => {
-    const s = parseSettings({ stt: 'whisper-tiny.en', llm: 'qwen2.5-0.5b', tts: 'web-speech', voice: 'M2', f16: false });
-    expect(s).toEqual({ stt: 'whisper-tiny.en', llm: 'qwen2.5-0.5b', tts: 'web-speech', voice: 'M2', f16: false });
+    const stored = { stt: 'whisper-tiny.en', llm: 'qwen2.5-0.5b', tts: 'web-speech', voice: 'M2', f16: false, talkMode: 'push' };
+    expect(parseSettings(stored)).toEqual(stored);
   });
 
   it('replaces unknown values individually', () => {
