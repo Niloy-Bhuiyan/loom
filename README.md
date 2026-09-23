@@ -173,6 +173,17 @@ If WebGPU isn't available, Loom shows a friendly explanation instead of loading.
 - The microphone and WebGPU only work on **secure origins** (`https://` or
   `http://localhost`).
 
+### Troubleshooting
+
+| Symptom | What's going on / what to do |
+| --- | --- |
+| "This browser doesn't support WebGPU" | Use one of the browsers above, enable hardware acceleration, update GPU drivers. |
+| "Your GPU ran out of memory" | Click **Use the light model**, or close other GPU-heavy tabs/apps. |
+| Replies are fluent nonsense | Some GPUs report 16-bit float support but compute it wrongly. Loom self-tests for this and switches to 32-bit weights automatically; you can also untick **Use 16-bit GPU math** in settings. |
+| Models download again on every visit | The browser isn't letting Loom keep ~1–2 GB in its cache (low disk space, strict storage limits, private/incognito window). Free up space or use a normal window. |
+| First start takes a minute even when cached | That's shader compilation on the GPU during warm-up; it's normal on integrated GPUs. |
+| Neural voice fails to load | Loom falls back to an on-device system voice (or text-only if none is installed). |
+
 ## Deploying (GitHub Pages)
 
 The build is fully static (`dist/`), so it can be hosted anywhere. A GitHub

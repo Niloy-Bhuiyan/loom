@@ -125,11 +125,35 @@ complete it is cleaned of markdown/emoji and handed to TTS, while the model is
 still writing the next one. Synthesized sentences are played back-to-back by a
 gapless PCM player.
 
+### Broken 16-bit GPU math: a self-test
+
+Found while testing on an Intel UHD (Gen-9) integrated GPU: the adapter
+advertises `shader-f16`, but with `q4f16` weights Qwen2.5 produced fluent
+nonsense ("Octopuses / Fun Fact About Octopuses / Talk About Talk About…"),
+while the **same model with `q4` weights** answered correctly ("The capital of
+France is Paris."). The chat template was verified to be applied, so it's the
+GPU's f16 arithmetic, not the prompt.
+
+Because a GPU can claim f16 support and still compute it wrongly, Loom doesn't
+trust the feature flag alone:
+
+1. The LLM warm-up asks *"What is 2 + 2? Reply with just the number."* with
+   greedy decoding.
+2. If f16 weights were used and the answer doesn't contain "4", the worker
+   reports a self-test failure.
+3. The client tears the worker down, reloads the model with 32-bit (`q4`)
+   weights, and saves `f16: false` in settings so the next visit goes straight
+   to the working weights. The user sees a one-line notice.
+
+Settings also has a manual **"Use 16-bit GPU math"** switch.
+
 ## Graceful degradation
 
 - **No WebGPU / no adapter / insecure context** → a friendly screen explaining
   what's needed and which browsers work, instead of a crash.
 - **`shader-f16` missing** → automatically use `q4` instead of `q4f16` weights.
+- **`shader-f16` present but broken** → caught by the warm-up self-test (above)
+  and switched to `q4` automatically.
 - **Model load failures** are classified ([`src/core/errors.ts`](src/core/errors.ts))
   into out-of-memory, network, storage, GPU and microphone errors, each with a
   plain-language explanation. Memory-type failures offer a one-click switch to
