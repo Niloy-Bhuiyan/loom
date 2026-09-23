@@ -1,4 +1,5 @@
-export type WaveMode = 'idle' | 'listening' | 'thinking' | 'speaking';
+/** `standby`: hands-free is on and waiting for the user to speak. */
+export type WaveMode = 'idle' | 'standby' | 'listening' | 'thinking' | 'speaking';
 
 export interface WaveSources {
   /** Live microphone analyser while recording. */
@@ -10,6 +11,7 @@ export interface WaveSources {
 const BARS = 72;
 const COLORS: Record<WaveMode, string> = {
   idle: '124, 240, 197',
+  standby: '124, 240, 197',
   listening: '255, 122, 138',
   thinking: '167, 139, 250',
   speaking: '167, 139, 250',
@@ -52,16 +54,19 @@ export class Waveform {
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     switch (this.mode) {
-      case 'listening': {
+      case 'listening':
+      case 'standby': {
         const analyser = this.sources.mic();
         if (!analyser) break;
         analyser.getByteFrequencyData(this.freq);
         // Speech lives in the lower bins; mirror them so the ring is symmetric.
         const usable = Math.min(this.freq.length, analyser.frequencyBinCount) * 0.35;
+        // In standby, show the room's sound more softly than confirmed speech.
+        const gain = this.mode === 'standby' ? 0.6 : 1;
         for (let i = 0; i < BARS; i++) {
           const mirrored = i < BARS / 2 ? i : BARS - 1 - i;
           const bin = Math.floor((mirrored / (BARS / 2)) * usable);
-          out[i] = (this.freq[bin] ?? 0) / 255;
+          out[i] = Math.max(0.06, ((this.freq[bin] ?? 0) / 255) * gain);
         }
         break;
       }
