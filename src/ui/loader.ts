@@ -20,7 +20,7 @@ class StageRow {
   private meta: HTMLElement;
   private phase: HTMLElement;
 
-  constructor(private info: StageInfo) {
+  constructor(info: StageInfo) {
     this.fill = h('span');
     this.bar = h('div', { class: 'bar', role: 'progressbar', 'aria-label': `${info.title} download`, 'aria-valuemin': 0, 'aria-valuemax': 100 }, this.fill);
     this.meta = h('span', { class: 'stage-meta' }, `~${formatBytes(info.approxMB * 1024 * 1024)}`);
@@ -57,10 +57,6 @@ class StageRow {
       this.fill.style.width = '100%';
       this.el.querySelector('.stage-icon')!.replaceChildren(icon('check'));
     }
-  }
-
-  get title(): string {
-    return this.info.title;
   }
 }
 
