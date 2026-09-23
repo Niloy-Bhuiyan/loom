@@ -88,13 +88,22 @@ export class Conversation {
         return this.finish(turn);
       }
 
-      this.history.push({ role: 'user', content: text });
-      this.events.onUserMessage(text);
-      await this.respond(turn);
+      await this.reply(turn, text);
     } catch (err) {
-      if (turn !== this.turn) return;
-      this.events.onError(toFriendlyError(err));
-      this.finish(turn);
+      this.fail(turn, err);
+    }
+  }
+
+  /** Send a typed message (skips speech recognition; the reply is still spoken). */
+  async sendText(text: string): Promise<void> {
+    const trimmed = text.trim();
+    if (!trimmed || this.state === 'listening') return;
+    this.interrupt();
+    const turn = ++this.turn;
+    try {
+      await this.reply(turn, trimmed);
+    } catch (err) {
+      this.fail(turn, err);
     }
   }
 
@@ -107,7 +116,9 @@ export class Conversation {
     this.setState('idle');
   }
 
-  private async respond(turn: number): Promise<void> {
+  private async reply(turn: number, userText: string): Promise<void> {
+    this.history.push({ role: 'user', content: userText });
+    this.events.onUserMessage(userText);
     this.setState('thinking');
     this.events.onAssistantStart();
 
@@ -135,6 +146,12 @@ export class Conversation {
 
     say(chunker.flush());
     await this.stages.tts.drain();
+    this.finish(turn);
+  }
+
+  private fail(turn: number, err: unknown): void {
+    if (turn !== this.turn) return;
+    this.events.onError(toFriendlyError(err));
     this.finish(turn);
   }
 

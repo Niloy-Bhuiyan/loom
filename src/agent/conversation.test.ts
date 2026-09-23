@@ -108,6 +108,21 @@ describe('Conversation', () => {
     expect(ctx.log.at(-1)).toBe('assistant:Partial (interrupted)');
   });
 
+  it('answers typed messages without speech recognition', async () => {
+    const { convo, stt, spoken, log } = setup();
+    await convo.sendText('  typed question ');
+    expect(stt.transcribe).not.toHaveBeenCalled();
+    expect(log[0]).toBe('user:typed question');
+    expect(spoken).toEqual(['Hi there.', 'How can I help?']);
+    expect(convo.current).toBe('idle');
+  });
+
+  it('ignores empty typed messages', async () => {
+    const { convo, log } = setup();
+    await convo.sendText('   ');
+    expect(log).toEqual([]);
+  });
+
   it('reports errors from a stage and returns to idle', async () => {
     const ctx = setup();
     vi.mocked(ctx.stt.transcribe).mockRejectedValue(new Error('Failed to fetch'));
