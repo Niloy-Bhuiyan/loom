@@ -234,5 +234,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 [MIT](LICENSE) © Niloy Bhuiyan
 
-Model licenses are set by their authors: Whisper (MIT), Qwen2.5 (Apache 2.0),
-Supertonic (see its model card on Hugging Face).
+Model weights are downloaded at runtime and are licensed by their authors:
+Whisper (MIT), Qwen2.5 (Apache 2.0), Supertonic (OpenRAIL — see the
+[model card](https://huggingface.co/Supertone/supertonic) for its use
+restrictions).
