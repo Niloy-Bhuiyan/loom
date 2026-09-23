@@ -445,6 +445,18 @@ a {
   color: #3a0610;
 }
 
+/* Hands-free is on and waiting for you to speak. */
+.talk[data-state='standby'] {
+  box-shadow: 0 0 0 0 rgba(124, 240, 197, 0.4), 0 10px 40px rgba(124, 240, 197, 0.35);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  50% {
+    box-shadow: 0 0 0 14px rgba(124, 240, 197, 0), 0 10px 50px rgba(124, 240, 197, 0.5);
+  }
+}
+
 .talk[data-state='transcribing'],
 .talk[data-state='thinking'] {
   background: radial-gradient(circle at 30% 25%, #d9ccff, var(--accent-2) 55%, #7c5ce6);

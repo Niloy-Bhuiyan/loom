@@ -1,4 +1,5 @@
 import logoUrl from '../assets/logo.svg';
+import type { TalkMode } from '../config/settings';
 import { h } from './dom';
 import { icon } from './icons';
 
@@ -20,6 +21,7 @@ export interface Layout {
   wave: HTMLCanvasElement;
   status: HTMLElement;
   typeForm: HTMLFormElement;
+  modeButtons: Record<TalkMode, HTMLButtonElement>;
   typeInput: HTMLInputElement;
   settingsButton: HTMLButtonElement;
 }
@@ -49,6 +51,11 @@ export function buildLayout(): Layout {
   const status = h('p', { class: 'status', 'aria-live': 'polite' }, 'Loading models…');
   const typeInput = h('input', { type: 'text', placeholder: 'or type a message…', 'aria-label': 'Type a message', autocomplete: 'off', disabled: true });
   const typeForm = h('form', { class: 'type-form' }, typeInput, h('button', { type: 'submit' }, 'Send'));
+  const modeButtons: Record<TalkMode, HTMLButtonElement> = {
+    'hands-free': h('button', { type: 'button', role: 'radio', 'aria-checked': 'false' }, 'Hands-free'),
+    push: h('button', { type: 'button', role: 'radio', 'aria-checked': 'false' }, 'Push to talk'),
+  };
+  const modeSwitch = h('div', { class: 'mode-switch', role: 'radiogroup', 'aria-label': 'How to talk' }, modeButtons['hands-free'], modeButtons.push);
 
   const stage = h('main', { class: 'stage' }, callout);
 
@@ -62,10 +69,10 @@ export function buildLayout(): Layout {
       h('div', { class: 'topbar-right' }, badge, settingsButton),
     ),
     stage,
-    h('footer', { class: 'dock' }, h('div', { class: 'talk-wrap' }, wave, talk), status, typeForm),
+    h('footer', { class: 'dock' }, modeSwitch, h('div', { class: 'talk-wrap' }, wave, talk), status, typeForm),
   );
 
-  return { root, badge, callout, empty, chips, stage, talk, wave, status, typeForm, typeInput, settingsButton };
+  return { root, badge, callout, empty, chips, stage, talk, wave, status, typeForm, typeInput, settingsButton, modeButtons };
 }
 
 /** Reflect connectivity in the badge and the Airplane Mode Test callout. */
