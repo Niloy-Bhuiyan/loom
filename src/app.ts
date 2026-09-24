@@ -1,7 +1,7 @@
 import { Conversation, type AgentState } from './agent/conversation';
 import { MicRecorder } from './audio/recorder';
 import { findLlm, findStt, LIGHTEST_LLM, SUPERTONIC_APPROX_MB, SUPERTONIC_MODEL } from './config/models';
-import { saveSettings, type Settings } from './config/settings';
+import { saveSettings, type Settings, type TalkMode } from './config/settings';
 import type { Capabilities } from './core/capabilities';
 import { toFriendlyError, type FriendlyError } from './core/errors';
 import { areModelsCached, clearModelCache, markModelsCached, requestPersistentStorage } from './core/model-cache';
@@ -17,13 +17,27 @@ import { openSettings } from './ui/settings-panel';
 import { bindTalkControls } from './ui/talk-controls';
 import { Transcript } from './ui/transcript';
 import { Waveform } from './ui/waveform';
+import { HandsFree } from './vad/hands-free';
 
-const STATUS: Record<AgentState, string> = {
+/** What the talk button and waveform show: the agent state, plus `standby` for hands-free waiting. */
+type DisplayState = AgentState | 'standby';
+
+// Static strings only (rendered as HTML for the <kbd> hints).
+const PUSH_STATUS: Record<AgentState, string> = {
   idle: 'Hold to talk, or tap to start and tap again to send<span class="kbd-hint"> · or hold <kbd>Space</kbd></span>',
   listening: 'Listening… release (or tap) to send',
   transcribing: 'Transcribing on your GPU…',
   thinking: 'Thinking… tap to interrupt',
   speaking: 'Speaking… tap to interrupt<span class="kbd-hint"> · <kbd>Esc</kbd> to stop</span>',
+};
+
+const HANDS_FREE_STATUS: Record<DisplayState, string> = {
+  idle: 'Tap to start a hands-free conversation<span class="kbd-hint"> · or press <kbd>Space</kbd></span>',
+  standby: 'I’m listening — just start talking. Tap to end.',
+  listening: 'Listening…',
+  transcribing: 'Transcribing on your GPU…',
+  thinking: 'Thinking… just talk to interrupt',
+  speaking: 'Speaking… just talk to interrupt<span class="kbd-hint"> · <kbd>Esc</kbd> to stop</span>',
 };
 
 export class App {
@@ -34,6 +48,7 @@ export class App {
   private llm: TransformersLLM;
   private tts: TextToSpeech;
   private conversation: Conversation;
+  private handsFree: HandsFree;
   private waveform: Waveform;
   private ready = false;
 
@@ -62,6 +77,15 @@ export class App {
       onAssistantEnd: (_t, interrupted) => this.transcript.endAssistant(interrupted),
       onNotice: (t) => this.transcript.addNotice(t),
       onError: (e) => this.showRuntimeError(e),
+    });
+
+    this.handsFree = new HandsFree(this.recorder, {
+      onSpeechStart: () => this.conversation.userStartedSpeaking(),
+      onSpeechEnd: (audio) => void this.conversation.submitUtterance(audio),
+      onError: (err) => {
+        this.showRuntimeError(toFriendlyError(err));
+        void this.stopHandsFree();
+      },
     });
 
     this.waveform = new Waveform(this.layout.wave, this.layout.talk, {
@@ -186,13 +210,24 @@ export class App {
 
   // ───────────────────────── Interaction ─────────────────────────
 
+  private get handsFreeMode(): boolean {
+    return this.settings.talkMode === 'hands-free';
+  }
+
   private bindControls(): void {
+    // In hands-free mode the button (and Space) simply toggles the "call" on and off.
     bindTalkControls(this.layout.talk, {
-      start: () => void this.conversation.startListening(),
-      stop: () => void this.conversation.stopListening(),
+      start: () => (this.handsFreeMode ? void this.toggleHandsFree() : void this.conversation.startListening()),
+      stop: () => {
+        if (!this.handsFreeMode) void this.conversation.stopListening();
+      },
       cancel: () => this.conversation.interrupt(),
-      isListening: () => this.conversation.current === 'listening',
+      isListening: () => !this.handsFreeMode && this.conversation.current === 'listening',
     });
+
+    for (const [mode, button] of Object.entries(this.layout.modeButtons) as [TalkMode, HTMLButtonElement][]) {
+      button.addEventListener('click', () => void this.setTalkMode(mode));
+    }
 
     this.layout.typeForm.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -208,13 +243,51 @@ export class App {
     this.layout.settingsButton.addEventListener('click', () => this.openSettings());
   }
 
+  private async setTalkMode(mode: TalkMode): Promise<void> {
+    if (mode === this.settings.talkMode) return;
+    if (this.handsFree.active) await this.stopHandsFree();
+    this.settings = { ...this.settings, talkMode: mode };
+    saveSettings(this.settings);
+    this.renderState(this.conversation.current);
+  }
+
+  private async toggleHandsFree(): Promise<void> {
+    if (this.handsFree.active) return this.stopHandsFree();
+    this.conversation.interrupt();
+    try {
+      await this.handsFree.start();
+    } catch (err) {
+      this.showRuntimeError(toFriendlyError(err));
+    }
+    this.renderState(this.conversation.current);
+  }
+
+  private async stopHandsFree(): Promise<void> {
+    await this.handsFree.stop();
+    this.conversation.reset();
+    this.renderState(this.conversation.current);
+  }
+
   private renderState(state: AgentState): void {
-    const { talk, status } = this.layout;
-    talk.dataset.state = state;
-    talk.replaceChildren(icon(state === 'listening' ? 'stop' : 'mic'));
-    talk.setAttribute('aria-label', state === 'listening' ? 'Stop and send' : state === 'idle' ? 'Hold to talk' : 'Interrupt and talk');
-    status.innerHTML = STATUS[state]; // static strings only
-    this.waveform.setMode(state === 'transcribing' ? 'thinking' : state);
+    const { talk, status, modeButtons } = this.layout;
+    const handsFree = this.handsFreeMode;
+    const live = handsFree && this.handsFree.active;
+    const display: DisplayState = live && state === 'idle' ? 'standby' : state;
+
+    talk.dataset.state = display;
+    talk.replaceChildren(icon(live || (!handsFree && state === 'listening') ? 'stop' : 'mic'));
+    talk.setAttribute(
+      'aria-label',
+      live ? 'End hands-free conversation' : handsFree ? 'Start hands-free conversation' : state === 'listening' ? 'Stop and send' : 'Hold to talk',
+    );
+    status.innerHTML = live || (handsFree && state === 'idle') ? HANDS_FREE_STATUS[display] : PUSH_STATUS[state];
+    this.waveform.setMode(display === 'transcribing' ? 'thinking' : display);
+    // Loom's own voice can leak into the mic; demand clearer speech to barge in while it talks.
+    if (live) this.handsFree.setStrict(state === 'speaking');
+
+    for (const [mode, button] of Object.entries(modeButtons) as [TalkMode, HTMLButtonElement][]) {
+      button.setAttribute('aria-checked', String(mode === this.settings.talkMode));
+    }
   }
 
   private openSettings(): void {
