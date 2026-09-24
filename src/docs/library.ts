@@ -3,7 +3,7 @@ import { WorkerClient } from '../workers/client';
 import { chunkText } from './chunk';
 import type { EmbedProgress, EmbedRequest, EmbedResult } from './embed.worker';
 import { extractText } from './extract';
-import { formatContext, topMatches, type IndexedPassage } from './search';
+import { CONTEXT_CHARS, formatContext, topMatches, type IndexedPassage } from './search';
 
 export interface LoadedDoc {
   id: string;
@@ -62,14 +62,17 @@ export class DocumentLibrary {
     this.index = this.index.filter((p) => p.docId !== id);
   }
 
-  /** Excerpts relevant to `query`, formatted for the prompt; null if nothing matches. */
+  /** Excerpts relevant to `query`, formatted for the prompt; null when no documents are loaded. */
   async retrieve(query: string): Promise<string | null> {
     if (this.index.length === 0 || !this.embedder) return null;
-    const [vector] = await this.embedder.run({ texts: [query] });
-    const matches = topMatches(vector!, this.index, TOP_K);
-    if (matches.length === 0) return null;
     const names = new Map([...this.docs.values()].map((d) => [d.id, d.name]));
-    return formatContext(matches, names);
+
+    // Short documents fit in the prompt whole — more reliable than any search.
+    const totalChars = this.index.reduce((n, p) => n + p.text.length, 0);
+    if (totalChars <= CONTEXT_CHARS) return formatContext(this.index.map((passage) => ({ passage, score: 1 })), names);
+
+    const [vector] = await this.embedder.run({ texts: [query] });
+    return formatContext(topMatches(vector!, query, this.index, TOP_K), names);
   }
 
   private ensureEmbedder(onProgress: ProgressListener): Promise<void> {

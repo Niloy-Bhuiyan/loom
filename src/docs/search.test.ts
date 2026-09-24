@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dot, formatContext, topMatches, type IndexedPassage } from './search';
+import { dot, formatContext, keywordScore, topMatches, type IndexedPassage } from './search';
 
 const unit = (...v: number[]) => {
   const len = Math.hypot(...v);
@@ -13,19 +13,38 @@ describe('dot', () => {
   });
 });
 
-describe('topMatches', () => {
-  const index = [passage('cats', unit(1, 0, 0)), passage('dogs', unit(0.8, 0.6, 0)), passage('cars', unit(0, 0, 1))];
-
-  it('ranks by similarity', () => {
-    expect(topMatches(unit(1, 0.1, 0), index, 2).map((m) => m.passage.text)).toEqual(['cats', 'dogs']);
+describe('keywordScore', () => {
+  it('counts meaningful query words found in the text', () => {
+    expect(keywordScore('What is the wifi password?', 'Free wifi password: river123.')).toBe(1);
+    expect(keywordScore('wifi speed', 'Free wifi here')).toBe(0.5);
   });
 
-  it('drops weak matches', () => {
-    expect(topMatches(unit(0, 1, 0), index, 3).map((m) => m.passage.text)).toEqual(['dogs']);
+  it('ignores stopwords and case', () => {
+    expect(keywordScore('What is THE Soup', 'soup of the day')).toBe(1);
+    expect(keywordScore('what is the', 'anything')).toBe(0);
+  });
+});
+
+describe('topMatches', () => {
+  const index = [passage('cats purr', unit(1, 0, 0)), passage('dogs bark', unit(0.8, 0.6, 0)), passage('cars honk', unit(0, 0, 1))];
+
+  it('ranks by meaning', () => {
+    expect(topMatches(unit(1, 0.1, 0), 'pets', index, 2).map((m) => m.passage.text)).toEqual(['cats purr', 'dogs bark']);
+  });
+
+  it('lets exact keywords rescue a passage the embedding misses', () => {
+    // The embedding slightly prefers "cats" (as with the mixed-topic passages seen in practice)…
+    const top = topMatches(unit(1, 0, 0.8), 'why do cars honk', index, 1)[0];
+    expect(top?.passage.text).toBe('cars honk');
+  });
+
+  it('always returns the best passage, but filters weak extras', () => {
+    const matches = topMatches(unit(0, 0.2, -1), 'unrelated', index, 3);
+    expect(matches).toHaveLength(1);
   });
 
   it('returns nothing for an empty index', () => {
-    expect(topMatches(unit(1, 0, 0), [], 3)).toEqual([]);
+    expect(topMatches(unit(1, 0, 0), 'x', [], 3)).toEqual([]);
   });
 });
 
