@@ -71,6 +71,16 @@ export class Conversation {
     this.stages.tts = tts;
   }
 
+  /** Swap the brain (e.g. after a background upgrade). Only safe while it isn't generating. */
+  setLlm(llm: LanguageModel): void {
+    this.stages.llm = llm;
+  }
+
+  /** True while the language model may be in use. */
+  get busy(): boolean {
+    return this.state === 'thinking' || this.state === 'speaking' || this.state === 'transcribing';
+  }
+
   async startListening(): Promise<void> {
     if (this.state === 'listening') return;
     this.interrupt();
