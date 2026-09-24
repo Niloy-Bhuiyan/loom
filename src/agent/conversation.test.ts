@@ -213,6 +213,34 @@ describe('Conversation', () => {
 
   });
 
+  it('speaks a greeting without calling the model', async () => {
+    const ctx = setup();
+    await ctx.convo.greet('Let’s practice English!');
+    expect(ctx.llm.generate).not.toHaveBeenCalled();
+    expect(ctx.spoken).toEqual(['Let’s practice English!']);
+    expect(ctx.convo.history).toEqual([{ role: 'assistant', content: 'Let’s practice English!' }]);
+    expect(ctx.convo.current).toBe('idle');
+  });
+
+  it('uses the current mode’s system prompt', async () => {
+    const ctx = setup();
+    ctx.convo.setSystemPrompt('You are a pirate.');
+    await ctx.convo.sendText('Ahoy');
+    const [messages] = vi.mocked(ctx.llm.generate).mock.calls[0]!;
+    expect(messages[0]).toEqual({ role: 'system', content: 'You are a pirate.' });
+  });
+
+  it('loads a saved conversation and continues from it', async () => {
+    const ctx = setup();
+    ctx.convo.load([
+      { role: 'user', content: 'My name is Sam.' },
+      { role: 'assistant', content: 'Nice to meet you, Sam!' },
+    ]);
+    await ctx.convo.sendText('What is my name?');
+    const [messages] = vi.mocked(ctx.llm.generate).mock.calls[0]!;
+    expect(messages.map((m) => m.content).slice(1)).toEqual(['My name is Sam.', 'Nice to meet you, Sam!', 'What is my name?']);
+  });
+
   it('adds document excerpts to the prompt but not to the history', async () => {
     const ctx = setup();
     const retriever = vi.fn(async () => '[From “menu.pdf”]\nSoup is $4.');

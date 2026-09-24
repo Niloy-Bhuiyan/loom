@@ -86,6 +86,32 @@ export class Conversation {
     this.retriever = retriever;
   }
 
+  /** Change who Loom is (conversation mode). Applies from the next reply. */
+  setSystemPrompt(prompt: string): void {
+    this.systemPrompt = prompt;
+  }
+
+  /** Replace the whole conversation, e.g. when opening a saved chat or starting a new one. */
+  load(messages: readonly ChatMessage[]): void {
+    this.reset();
+    this.history.length = 0;
+    this.history.push(...messages);
+  }
+
+  /** Say something scripted (a mode's greeting) without asking the model. */
+  async greet(text: string): Promise<void> {
+    this.interrupt();
+    const turn = ++this.turn;
+    this.history.push({ role: 'assistant', content: text });
+    this.events.onAssistantStart();
+    this.events.onAssistantToken(text);
+    this.events.onAssistantEnd(text, false);
+    this.stages.tts.speak(toSpeakableText(text));
+    this.setState('speaking');
+    await this.stages.tts.drain();
+    this.finish(turn);
+  }
+
   /** True while the language model may be in use. */
   get busy(): boolean {
     return this.state === 'thinking' || this.state === 'speaking' || this.state === 'transcribing';
