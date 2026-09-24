@@ -154,6 +154,13 @@ describe('Conversation', () => {
       expect(states.at(-1)).toBe('idle');
     });
 
+    it('drops a half-heard utterance when hands-free is switched off', async () => {
+      const { convo, states } = setup();
+      convo.userStartedSpeaking();
+      convo.reset();
+      expect(states).toEqual(['listening', 'idle']);
+    });
+
     it('lets the user cut Loom off by speaking', async () => {
       const ctx = setup();
       let finish: (reply: string) => void = () => {};

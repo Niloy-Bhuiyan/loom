@@ -130,6 +130,13 @@ export class Conversation {
     }
   }
 
+  /** Hands-free ended: drop anything in progress, including a half-heard utterance. */
+  reset(): void {
+    this.interrupt();
+    this.turn++;
+    this.setState('idle');
+  }
+
   /** Stop thinking/speaking immediately. */
   interrupt(): void {
     if (this.state === 'idle' || this.state === 'listening') return;
