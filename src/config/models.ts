@@ -70,6 +70,15 @@ export const LLM_PRESETS: readonly LlmPreset[] = [
     note: 'Best replies. Wants ~2 GB of free GPU memory.',
   },
   {
+    id: 'qwen3-4b',
+    label: 'Qwen3 4B Instruct (pro)',
+    model: 'onnx-community/Qwen3-4B-Instruct-2507-ONNX',
+    approxMB: 2900,
+    dtypeF16: 'q4f16',
+    dtypeF32: 'q4',
+    note: 'Noticeably smarter. For gaming GPUs or Apple M-series with 16 GB+ memory; ~3 GB download.',
+  },
+  {
     id: 'qwen2.5-0.5b',
     label: 'Qwen2.5 0.5B Instruct (light)',
     model: 'onnx-community/Qwen2.5-0.5B-Instruct',
