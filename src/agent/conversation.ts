@@ -1,4 +1,4 @@
-import { isLikelySilence, WHISPER_SAMPLE_RATE } from '../audio/pcm';
+import { concatChunks, isLikelySilence, WHISPER_SAMPLE_RATE } from '../audio/pcm';
 import { toFriendlyError, type FriendlyError } from '../core/errors';
 import { SentenceChunker } from '../core/sentences';
 import { toSpeakableText } from '../core/speech-text';
@@ -22,6 +22,16 @@ export interface ConversationEvents {
   /** Something the user should know that isn't an error, e.g. "didn't catch that". */
   onNotice(text: string): void;
   onError(error: FriendlyError): void;
+  /** Hands-free: the user was only pausing, so their last message (and any reply to it) is withdrawn. */
+  onRetract(): void;
+}
+
+/** The latest hands-free utterance, kept in case the user was only pausing. */
+interface HeardUtterance {
+  audio: Float32Array;
+  turn: number;
+  /** Where its user message landed in history, once transcribed. */
+  historyIndex: number | null;
 }
 
 export interface Stages {
@@ -42,6 +52,9 @@ export class Conversation {
   private turn = 0;
   /** Text streamed so far for the reply being generated; null when no generation is running. */
   private streamed: string | null = null;
+  private lastUtterance: HeardUtterance | null = null;
+  /** Audio from before a mid-sentence pause, to be joined with what the user says next. */
+  private continuation: Float32Array | null = null;
 
   constructor(
     private stages: Stages,
@@ -90,6 +103,24 @@ export class Conversation {
 
   /** Hands-free: voice detection heard the user start talking. Cuts Loom off if it was busy. */
   userStartedSpeaking(): void {
+    const last = this.lastUtterance;
+    const stillWorking = this.state === 'transcribing' || this.state === 'thinking';
+    if (last && last.turn === this.turn && stillWorking) {
+      // Loom hadn't started answering yet, so the user was only pausing mid-thought:
+      // withdraw that message and hear it again together with what comes next.
+      this.turn++;
+      this.stages.llm.interrupt();
+      this.stages.tts.stop();
+      this.streamed = null;
+      if (last.historyIndex !== null) {
+        this.history.length = last.historyIndex;
+        this.events.onRetract();
+      }
+      this.continuation = last.audio;
+      this.lastUtterance = null;
+      this.setState('listening');
+      return;
+    }
     this.interrupt();
     if (this.state === 'idle') this.setState('listening');
   }
@@ -97,7 +128,12 @@ export class Conversation {
   /** Hands-free: a complete utterance detected by voice activity detection. */
   async submitUtterance(audio: Float32Array): Promise<void> {
     this.interrupt();
+    if (this.continuation) {
+      audio = concatChunks([this.continuation, audio]);
+      this.continuation = null;
+    }
     const turn = ++this.turn;
+    this.lastUtterance = { audio, turn, historyIndex: null };
     this.setState('transcribing');
     try {
       await this.transcribeAndReply(turn, audio, true);
@@ -114,6 +150,7 @@ export class Conversation {
       if (!quiet) this.events.onNotice('Sorry, I didn’t catch that. Try again?');
       return this.finish(turn);
     }
+    if (this.lastUtterance?.turn === turn) this.lastUtterance.historyIndex = this.history.length;
     await this.reply(turn, text);
   }
 
@@ -134,6 +171,8 @@ export class Conversation {
   reset(): void {
     this.interrupt();
     this.turn++;
+    this.lastUtterance = null;
+    this.continuation = null;
     this.setState('idle');
   }
 

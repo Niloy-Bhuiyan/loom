@@ -77,6 +77,7 @@ export class App {
       onAssistantEnd: (_t, interrupted) => this.transcript.endAssistant(interrupted),
       onNotice: (t) => this.transcript.addNotice(t),
       onError: (e) => this.showRuntimeError(e),
+      onRetract: () => this.transcript.retractLastUser(),
     });
 
     this.handsFree = new HandsFree(this.recorder, {

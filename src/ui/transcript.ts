@@ -6,6 +6,7 @@ export class Transcript {
   readonly el: HTMLElement;
   private empty: HTMLElement;
   private streaming: { row: HTMLElement; bubble: HTMLElement } | null = null;
+  private lastUser: HTMLElement | null = null;
 
   constructor(empty: HTMLElement) {
     this.empty = empty;
@@ -13,7 +14,17 @@ export class Transcript {
   }
 
   addUser(text: string): void {
-    this.append(h('div', { class: 'msg msg-user' }, h('div', { class: 'bubble' }, text)));
+    this.lastUser = h('div', { class: 'msg msg-user' }, h('div', { class: 'bubble' }, text));
+    this.append(this.lastUser);
+  }
+
+  /** Remove the latest user message and everything after it (the user was only pausing). */
+  retractLastUser(): void {
+    if (!this.lastUser) return;
+    this.streaming = null;
+    while (this.lastUser.nextSibling) this.lastUser.nextSibling.remove();
+    this.lastUser.remove();
+    this.lastUser = null;
   }
 
   startAssistant(): void {
