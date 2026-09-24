@@ -23,6 +23,7 @@ export interface Layout {
   status: HTMLElement;
   typeForm: HTMLFormElement;
   modeButtons: Record<TalkMode, HTMLButtonElement>;
+  upgrade: { el: HTMLElement; text: HTMLElement; fill: HTMLElement };
   typeInput: HTMLInputElement;
   settingsButton: HTMLButtonElement;
 }
@@ -58,7 +59,16 @@ export function buildLayout(): Layout {
   };
   const modeSwitch = h('div', { class: 'mode-switch', role: 'radiogroup', 'aria-label': 'How to talk' }, modeButtons['hands-free'], modeButtons.push);
 
-  const stage = h('main', { class: 'stage' }, callout);
+  const upgradeText = h('span', { class: 'upgrade-text' });
+  const upgradeFill = h('span');
+  const upgradeEl = h(
+    'div',
+    { class: 'upgrade', hidden: true, role: 'status' },
+    h('span', { class: 'upgrade-icon' }, icon('brain')),
+    h('div', { class: 'upgrade-body' }, upgradeText, h('div', { class: 'bar' }, upgradeFill)),
+  );
+
+  const stage = h('main', { class: 'stage' }, callout, upgradeEl);
 
   const root = h(
     'div',
@@ -73,7 +83,7 @@ export function buildLayout(): Layout {
     h('footer', { class: 'dock' }, modeSwitch, h('div', { class: 'talk-wrap' }, wave, talk), status, typeForm),
   );
 
-  return { root, badge, callout, empty, chips, stage, talk, wave, status, typeForm, typeInput, settingsButton, modeButtons };
+  return { root, badge, callout, empty, chips, stage, talk, wave, status, typeForm, typeInput, settingsButton, modeButtons, upgrade: { el: upgradeEl, text: upgradeText, fill: upgradeFill } };
 }
 
 /** Reflect connectivity in the badge and the Airplane Mode Test callout. */
