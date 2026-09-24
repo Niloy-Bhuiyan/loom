@@ -1,4 +1,5 @@
 import logoUrl from '../assets/logo.svg';
+import type { ChatMessage } from '../pipeline/types';
 import { h } from './dom';
 
 /** The scrolling conversation log. Model and user text is only ever set via textContent. */
@@ -51,6 +52,26 @@ export class Transcript {
     if (interrupted) row.classList.add('interrupted');
     if (!bubble.textContent) row.remove();
     this.streaming = null;
+  }
+
+  /** Back to the empty welcome state. */
+  clear(): void {
+    this.streaming = null;
+    this.lastUser = null;
+    this.el.replaceChildren(this.empty);
+  }
+
+  /** Show a saved conversation. */
+  showHistory(messages: readonly ChatMessage[]): void {
+    this.clear();
+    for (const m of messages) {
+      if (m.role === 'user') this.addUser(m.content);
+      else if (m.role === 'assistant') {
+        this.startAssistant();
+        this.appendAssistant(m.content);
+        this.endAssistant(false);
+      }
+    }
   }
 
   addNotice(text: string, isError = false): void {
