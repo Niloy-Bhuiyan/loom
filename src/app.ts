@@ -19,6 +19,8 @@ import { Transcript } from './ui/transcript';
 import { Waveform } from './ui/waveform';
 import { HandsFree } from './vad/hands-free';
 
+const MAX_DOWNLOAD_RETRIES = 2;
+
 /** What the talk button and waveform show: the agent state, plus `standby` for hands-free waiting. */
 type DisplayState = AgentState | 'standby';
 
@@ -152,12 +154,22 @@ export class App {
 
   private async loadModels(loader: LoaderPanel): Promise<void> {
     const load = async (key: string, stage: LoadableStage) => {
-      try {
-        await stage.load((p) => loader.progress(key, p));
-        loader.status(key, 'ready', 'Ready');
-      } catch (err) {
-        loader.status(key, 'error', 'Failed to load');
-        throw err;
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await stage.load((p) => loader.progress(key, p));
+          loader.status(key, 'ready', 'Ready');
+          return;
+        } catch (err) {
+          // Multi-hundred-MB downloads sometimes drop midway; files that finished are cached, so retrying is cheap.
+          const transient = toFriendlyError(err).kind === 'network' && navigator.onLine;
+          if (transient && attempt <= MAX_DOWNLOAD_RETRIES) {
+            loader.status(key, 'loading', `Connection dropped — retrying (${attempt}/${MAX_DOWNLOAD_RETRIES})…`);
+            await new Promise((r) => setTimeout(r, 2000 * attempt));
+            continue;
+          }
+          loader.status(key, 'error', 'Failed to load');
+          throw err;
+        }
       }
     };
 
