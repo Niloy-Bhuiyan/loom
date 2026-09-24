@@ -3,7 +3,7 @@ import { toFriendlyError, type FriendlyError } from '../core/errors';
 import { SentenceChunker } from '../core/sentences';
 import { toSpeakableText } from '../core/speech-text';
 import type { ChatMessage, LanguageModel, SpeechToText, TextToSpeech } from '../pipeline/types';
-import { buildMessages } from './prompt';
+import { buildMessages, SYSTEM_PROMPT } from './prompt';
 
 export type AgentState = 'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking';
 
@@ -34,6 +34,9 @@ interface HeardUtterance {
   historyIndex: number | null;
 }
 
+/** Returns prompt-ready excerpts relevant to the question, or null. */
+export type Retriever = (question: string) => Promise<string | null>;
+
 export interface Stages {
   stt: SpeechToText;
   llm: LanguageModel;
@@ -55,6 +58,8 @@ export class Conversation {
   private lastUtterance: HeardUtterance | null = null;
   /** Audio from before a mid-sentence pause, to be joined with what the user says next. */
   private continuation: Float32Array | null = null;
+  private retriever: Retriever | null = null;
+  private systemPrompt = SYSTEM_PROMPT;
 
   constructor(
     private stages: Stages,
@@ -74,6 +79,11 @@ export class Conversation {
   /** Swap the brain (e.g. after a background upgrade). Only safe while it isn't generating. */
   setLlm(llm: LanguageModel): void {
     this.stages.llm = llm;
+  }
+
+  /** Look up document excerpts for each question (null when no documents are loaded). */
+  setRetriever(retriever: Retriever | null): void {
+    this.retriever = retriever;
   }
 
   /** True while the language model may be in use. */
@@ -219,8 +229,13 @@ export class Conversation {
       }
     };
 
+    // Set before any await, so an interruption during retrieval still closes the reply bubble.
     this.streamed = '';
-    const reply = await this.stages.llm.generate(buildMessages(this.history), (token) => {
+    const context = this.retriever ? await this.retriever(userText).catch(() => null) : null;
+    if (turn !== this.turn) return;
+
+    const messages = buildMessages(this.history, { system: this.systemPrompt, context });
+    const reply = await this.stages.llm.generate(messages, (token) => {
       if (turn !== this.turn) return;
       this.streamed += token;
       this.events.onAssistantToken(token);

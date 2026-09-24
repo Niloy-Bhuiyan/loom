@@ -213,6 +213,27 @@ describe('Conversation', () => {
 
   });
 
+  it('adds document excerpts to the prompt but not to the history', async () => {
+    const ctx = setup();
+    const retriever = vi.fn(async () => '[From “menu.pdf”]\nSoup is $4.');
+    ctx.convo.setRetriever(retriever);
+    await ctx.convo.sendText('How much is soup?');
+
+    expect(retriever).toHaveBeenCalledWith('How much is soup?');
+    const [messages] = vi.mocked(ctx.llm.generate).mock.calls[0]!;
+    expect(messages.at(-1)?.content).toContain('Soup is $4.');
+    expect(ctx.convo.history[0]).toEqual({ role: 'user', content: 'How much is soup?' });
+  });
+
+  it('still answers if document lookup fails', async () => {
+    const ctx = setup();
+    ctx.convo.setRetriever(async () => {
+      throw new Error('embedder crashed');
+    });
+    await ctx.convo.sendText('Hello?');
+    expect(ctx.spoken).toEqual(['Hi there.', 'How can I help?']);
+  });
+
   it('answers typed messages without speech recognition', async () => {
     const { convo, stt, spoken, log } = setup();
     await convo.sendText('  typed question ');
