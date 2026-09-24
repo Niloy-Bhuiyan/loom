@@ -21,6 +21,8 @@ import { bindTalkControls } from './ui/talk-controls';
 import { Transcript } from './ui/transcript';
 import { Waveform } from './ui/waveform';
 import { HandsFree } from './vad/hands-free';
+import { DocumentLibrary } from './docs/library';
+import { DocumentsUi } from './ui/documents';
 
 const MAX_DOWNLOAD_RETRIES = 2;
 
@@ -59,6 +61,11 @@ export class App {
   private conversation: Conversation;
   private handsFree: HandsFree;
   private waveform: Waveform;
+  private library = new DocumentLibrary();
+  private docsUi = new DocumentsUi({
+    onFiles: (files) => void this.addDocuments(files),
+    onRemove: (id) => this.removeDocument(id),
+  });
   private ready = false;
 
   constructor(
@@ -103,6 +110,9 @@ export class App {
 
   mount(): void {
     this.host.replaceChildren(this.layout.root);
+    this.layout.upgrade.el.after(this.docsUi.strip);
+    this.layout.typeForm.prepend(this.docsUi.attachButton);
+    this.docsUi.mount(this.layout.root);
     this.bindControls();
     this.renderModeSwitch();
     const refresh = () => renderConnectivity(this.layout, navigator.onLine, this.ready);
@@ -397,6 +407,41 @@ export class App {
     if (JSON.stringify(prev) !== JSON.stringify(next)) {
       // Reloading is the most reliable way to release GPU memory held by the old models.
       location.reload();
+    }
+  }
+
+  // ───────────────────────── Documents ─────────────────────────
+
+  private async addDocuments(files: File[]): Promise<void> {
+    for (const file of files) {
+      const show = (text: string | null) => this.docsUi.showProgress(text, this.library.list);
+      try {
+        show(`Reading ${file.name}…`);
+        const doc = await this.library.add(
+          file,
+          ({ step, fraction }) => show(`${step === 'reading' ? 'Reading' : 'Understanding'} ${file.name}… ${Math.round(fraction * 100)}%`),
+          (p) => show(`Getting the document reader ready… ${Math.round((p.fraction ?? 0) * 100)}%`),
+        );
+        show(null);
+        this.conversation.setRetriever((q) => this.library.retrieve(q));
+        this.layout.typeInput.placeholder = `Ask about ${doc.name}…`;
+        this.transcript.addNotice(
+          `📄 Read “${doc.name}”${doc.pages ? ` (${doc.pages} pages)` : ''} on this device. Ask me anything about it — the file never leaves your computer.`,
+        );
+      } catch (err) {
+        show(null);
+        const message = err instanceof Error ? err.message : String(err);
+        this.transcript.addNotice(`Couldn’t read “${file.name}”: ${message}`, true);
+      }
+    }
+  }
+
+  private removeDocument(id: string): void {
+    this.library.remove(id);
+    this.docsUi.render(this.library.list);
+    if (this.library.isEmpty) {
+      this.conversation.setRetriever(null);
+      this.layout.typeInput.placeholder = 'or type a message…';
     }
   }
 
