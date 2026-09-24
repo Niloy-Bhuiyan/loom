@@ -282,6 +282,146 @@ a {
   height: 4px;
 }
 
+/* Documents the user has added. */
+.docs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.docs[hidden] {
+  display: none;
+}
+
+.doc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 5px 6px 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 0.8rem;
+  animation: rise 0.2s ease-out;
+}
+
+.doc-chip svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+}
+
+.doc-chip.busy {
+  padding-right: 12px;
+  color: var(--muted);
+}
+
+.doc-chip.busy svg {
+  color: var(--accent-2);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.doc-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.doc-meta {
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.doc-chip button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--faint);
+}
+
+.doc-chip button:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.doc-chip button svg {
+  width: 12px;
+  height: 12px;
+  color: inherit;
+}
+
+.attach-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.attach-btn:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.attach-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.attach-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+.drop-hint {
+  position: fixed;
+  inset: 12px;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  border: 2px dashed rgba(124, 240, 197, 0.6);
+  border-radius: 24px;
+  background: rgba(6, 8, 12, 0.8);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.drop-hint[hidden] {
+  display: none;
+}
+
+.drop-hint > div {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.drop-hint svg {
+  width: 40px;
+  height: 40px;
+  color: var(--accent);
+}
+
+.drop-hint strong {
+  font-size: 1.2rem;
+}
+
+.drop-hint span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 /* ───────────────────────── Transcript ───────────────────────── */
 .transcript {
   flex: 1;
