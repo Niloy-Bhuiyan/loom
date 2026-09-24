@@ -104,6 +104,7 @@ export class App {
   mount(): void {
     this.host.replaceChildren(this.layout.root);
     this.bindControls();
+    this.renderModeSwitch();
     const refresh = () => renderConnectivity(this.layout, navigator.onLine, this.ready);
     window.addEventListener('online', refresh);
     window.addEventListener('offline', refresh);
@@ -348,7 +349,7 @@ export class App {
 
   private renderState(state: AgentState): void {
     this.swapBrainIfIdle();
-    const { talk, status, modeButtons } = this.layout;
+    const { talk, status } = this.layout;
     const handsFree = this.handsFreeMode;
     const live = handsFree && this.handsFree.active;
     const display: DisplayState = live && state === 'idle' ? 'standby' : state;
@@ -363,8 +364,11 @@ export class App {
     this.waveform.setMode(display === 'transcribing' ? 'thinking' : display);
     // Loom's own voice can leak into the mic; demand clearer speech to barge in while it talks.
     if (live) this.handsFree.setStrict(state === 'speaking');
+    this.renderModeSwitch();
+  }
 
-    for (const [mode, button] of Object.entries(modeButtons) as [TalkMode, HTMLButtonElement][]) {
+  private renderModeSwitch(): void {
+    for (const [mode, button] of Object.entries(this.layout.modeButtons) as [TalkMode, HTMLButtonElement][]) {
       button.setAttribute('aria-checked', String(mode === this.settings.talkMode));
     }
   }
