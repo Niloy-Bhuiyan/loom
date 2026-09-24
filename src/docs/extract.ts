@@ -20,7 +20,8 @@ export async function extractText(file: File, onProgress?: (fraction: number) =>
   // Loaded on demand so pdf.js (~1 MB) only downloads for people who use documents.
   const pdfjs = await import('pdfjs-dist');
   pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+  const doc = await task.promise;
 
   const pages: string[] = [];
   for (let n = 1; n <= doc.numPages; n++) {
@@ -28,9 +29,10 @@ export async function extractText(file: File, onProgress?: (fraction: number) =>
     pages.push(content.items.map((item) => ('str' in item ? item.str + (item.hasEOL ? '\n' : ' ') : '')).join(''));
     onProgress?.(n / doc.numPages);
   }
-  await doc.destroy();
+  const pageCount = doc.numPages;
+  await task.destroy();
 
   const text = pages.join('\n\n');
   if (!text.trim()) throw new Error(`No text found in “${file.name}”. Scanned PDFs (images of pages) aren’t supported yet.`);
-  return { text, pages: doc.numPages };
+  return { text, pages: pageCount };
 }
