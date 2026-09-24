@@ -1,12 +1,15 @@
 import { Conversation, type AgentState } from './agent/conversation';
 import { MicRecorder } from './audio/recorder';
-import { findLlm, findStt, LIGHTEST_LLM, SUPERTONIC_APPROX_MB, SUPERTONIC_MODEL } from './config/models';
+import { findStt, LIGHTEST_LLM, SUPERTONIC_APPROX_MB, SUPERTONIC_MODEL, type LlmPreset } from './config/models';
 import { saveSettings, type Settings, type TalkMode } from './config/settings';
 import type { Capabilities } from './core/capabilities';
 import { toFriendlyError, type FriendlyError } from './core/errors';
 import { areModelsCached, clearModelCache, markModelsCached, requestPersistentStorage } from './core/model-cache';
-import { TransformersLLM } from './llm/transformers-llm';
-import type { LoadableStage, TextToSpeech } from './pipeline/types';
+import { formatBytes } from './core/progress';
+import { upgradeBrain } from './llm/brain-upgrade';
+import { planBrain, type BrainPlan } from './llm/fast-start';
+import { pickDtype, TransformersLLM } from './llm/transformers-llm';
+import type { LanguageModel, LoadableStage, TextToSpeech } from './pipeline/types';
 import { WhisperSTT } from './stt/whisper';
 import { createTts, describeTts, SilentTTS, SupertonicTTS, WebSpeechTTS } from './tts';
 import { errorDialog, type DialogAction } from './ui/dialogs';
@@ -47,7 +50,11 @@ export class App {
   private transcript: Transcript;
   private recorder = new MicRecorder();
   private stt: WhisperSTT;
-  private llm: TransformersLLM;
+  private llm: LanguageModel;
+  /** Fast start: which brain loads first, and which (if any) replaces it in the background. */
+  private brain: BrainPlan;
+  /** An upgraded brain waiting for a quiet moment to be swapped in. */
+  private pendingLlm: LanguageModel | null = null;
   private tts: TextToSpeech;
   private conversation: Conversation;
   private handsFree: HandsFree;
@@ -64,11 +71,8 @@ export class App {
     this.layout.stage.append(this.transcript.el);
 
     this.stt = new WhisperSTT(findStt(settings.stt));
-    this.llm = new TransformersLLM(findLlm(settings.llm), caps.shaderF16 && settings.f16, () => {
-      this.settings = { ...this.settings, f16: false };
-      saveSettings(this.settings);
-      this.transcript.addNotice('Your GPU’s 16-bit math gave wrong results, so Loom switched to 32-bit weights. This is remembered for next time.');
-    });
+    this.brain = planBrain(settings.llm, (model) => areModelsCached([model]));
+    this.llm = this.createLlm(this.brain.initial);
     this.tts = createTts(settings);
 
     this.conversation = new Conversation({ stt: this.stt, llm: this.llm, tts: this.tts }, this.recorder, {
@@ -110,9 +114,19 @@ export class App {
 
   // ───────────────────────── Model loading ─────────────────────────
 
+  private createLlm(preset: LlmPreset): TransformersLLM {
+    // Read settings at load time: the light brain's self-test may already have ruled out f16.
+    return new TransformersLLM(preset, this.caps.shaderF16 && this.settings.f16, () => {
+      if (!this.settings.f16) return;
+      this.settings = { ...this.settings, f16: false };
+      saveSettings(this.settings);
+      this.transcript.addNotice('Your GPU’s 16-bit math gave wrong results, so Loom switched to 32-bit weights. This is remembered for next time.');
+    });
+  }
+
   private stageInfo(): StageInfo[] {
     const stt = findStt(this.settings.stt);
-    const llm = findLlm(this.settings.llm);
+    const llm = this.brain.initial;
     const supertonic = this.settings.tts === 'supertonic';
     return [
       { key: 'stt', title: 'Ears', model: stt.label, approxMB: stt.approxMB, icon: 'ear' },
@@ -128,7 +142,7 @@ export class App {
   }
 
   private modelIds(): string[] {
-    const ids = [findStt(this.settings.stt).model, findLlm(this.settings.llm).model];
+    const ids = [findStt(this.settings.stt).model, this.brain.initial.model];
     if (this.settings.tts === 'supertonic') ids.push(SUPERTONIC_MODEL);
     return ids;
   }
@@ -148,7 +162,11 @@ export class App {
       start(true);
     } else {
       const total = stages.reduce((n, s) => n + s.approxMB, 0);
-      loader.askToDownload(total, () => start(false), () => this.openSettings());
+      const later = this.brain.upgradeTo;
+      const note = later
+        ? `To get you talking sooner, Loom starts with a light brain and quietly upgrades to ${later.label} (~${formatBytes(later.approxMB * 1024 * 1024)}) in the background.`
+        : undefined;
+      loader.askToDownload(total, () => start(false), () => this.openSettings(), note);
     }
   }
 
@@ -219,6 +237,53 @@ export class App {
     for (const chip of this.layout.chips) chip.disabled = false;
     renderConnectivity(this.layout, navigator.onLine, true);
     this.renderState('idle');
+    if (this.brain.upgradeTo) void this.startBrainUpgrade(this.brain.upgradeTo);
+  }
+
+  private async startBrainUpgrade(target: LlmPreset): Promise<void> {
+    const { el, text, fill } = this.layout.upgrade;
+    el.hidden = false;
+    text.textContent = `Getting smarter in the background — downloading ${target.label}…`;
+    const dtype = pickDtype(target, this.caps.shaderF16 && this.settings.f16);
+
+    await upgradeBrain(target, dtype, () => this.createLlm(target), {
+      onProgress: (p) => {
+        const pct = Math.round((p.fraction ?? 0) * 100);
+        fill.style.width = `${pct}%`;
+        text.textContent =
+          p.fraction !== null && p.fraction < 1
+            ? `Getting smarter in the background — downloading ${target.label}… ${pct}% (${formatBytes(p.loadedBytes)} of ${formatBytes(p.totalBytes)})`
+            : `Getting smarter — loading ${target.label} onto your GPU…`;
+      },
+      onReady: (llm) => {
+        this.pendingLlm = llm;
+        markModelsCached([target.model]);
+        text.textContent = `${target.label} is ready — switching over after this reply.`;
+        this.swapBrainIfIdle();
+      },
+      onError: (err) => {
+        el.hidden = true;
+        console.warn('[loom] brain upgrade failed', err);
+        const friendly = toFriendlyError(err);
+        this.transcript.addNotice(
+          friendly.kind === 'out-of-memory'
+            ? `${target.label} doesn’t fit in your GPU’s memory, so Loom will keep using the light brain.`
+            : `Couldn’t download ${target.label} right now; Loom will keep using the light brain and try again next visit.`,
+        );
+      },
+    });
+  }
+
+  /** Swap in an upgraded brain once nothing is being generated. */
+  private swapBrainIfIdle(): void {
+    if (!this.pendingLlm || this.conversation.busy) return;
+    const old = this.llm;
+    this.llm = this.pendingLlm;
+    this.pendingLlm = null;
+    this.conversation.setLlm(this.llm);
+    old.dispose();
+    this.layout.upgrade.el.hidden = true;
+    this.transcript.addNotice(`🧠 Brain upgraded — now using ${this.brain.upgradeTo?.label ?? 'the bigger model'}.`);
   }
 
   // ───────────────────────── Interaction ─────────────────────────
@@ -282,6 +347,7 @@ export class App {
   }
 
   private renderState(state: AgentState): void {
+    this.swapBrainIfIdle();
     const { talk, status, modeButtons } = this.layout;
     const handsFree = this.handsFreeMode;
     const live = handsFree && this.handsFree.active;
@@ -334,7 +400,7 @@ export class App {
 
   private showLoadError(error: FriendlyError, context: string): void {
     const actions: DialogAction[] = [];
-    const light = error.suggestSmallerModel && this.settings.llm !== LIGHTEST_LLM;
+    const light = error.suggestSmallerModel && this.brain.initial.id !== LIGHTEST_LLM;
     if (light) {
       actions.push({
         label: 'Use the light model',

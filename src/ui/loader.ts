@@ -99,10 +99,11 @@ export class LoaderPanel {
   }
 
   /** Ask before a large first download. */
-  askToDownload(totalMB: number, onStart: () => void, onSettings: () => void): void {
+  askToDownload(totalMB: number, onStart: () => void, onSettings: () => void, note?: string): void {
     this.intro.textContent =
       `Loom runs three AI models directly on your GPU. The first visit downloads about ${formatBytes(totalMB * 1024 * 1024)} ` +
-      'from Hugging Face; after that they are cached in your browser, so Loom starts in seconds and works with no internet at all.';
+      'from Hugging Face; after that they are cached in your browser, so Loom starts in seconds and works with no internet at all.' +
+      (note ? ` ${note}` : '');
     this.actions.replaceChildren(
       h('button', { class: 'btn btn-primary', onclick: onStart }, 'Download & start'),
       h('button', { class: 'btn', onclick: onSettings }, 'Choose smaller models'),

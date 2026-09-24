@@ -2,7 +2,6 @@ import type { LlmPreset } from '../config/models';
 import type { LanguageModel, ProgressListener } from '../pipeline/types';
 import { WorkerClient } from '../workers/client';
 import type { PrefetchConfig } from './prefetch.worker';
-import { pickDtype, TransformersLLM } from './transformers-llm';
 
 export interface UpgradeCallbacks {
   /** Progress of the background download, then of loading onto the GPU. */
@@ -17,15 +16,15 @@ export interface UpgradeCallbacks {
  * one in the background (straight into the browser cache, no GPU memory),
  * then load it and hand it over.
  */
-export async function upgradeBrain(target: LlmPreset, useF16: boolean, onF16Broken: () => void, cb: UpgradeCallbacks): Promise<void> {
+export async function upgradeBrain(target: LlmPreset, dtype: string, createLlm: () => LanguageModel, cb: UpgradeCallbacks): Promise<void> {
   const prefetch = new WorkerClient<PrefetchConfig, never, never>(
     new Worker(new URL('./prefetch.worker.ts', import.meta.url), { type: 'module', name: 'loom-prefetch' }),
   );
   try {
-    await prefetch.load({ task: 'text-generation', model: target.model, dtype: pickDtype(target, useF16) }, cb.onProgress);
+    await prefetch.load({ task: 'text-generation', model: target.model, dtype }, cb.onProgress);
     prefetch.terminate();
 
-    const llm = new TransformersLLM(target, useF16, onF16Broken);
+    const llm = createLlm();
     await llm.load(cb.onProgress);
     cb.onReady(llm);
   } catch (err) {
