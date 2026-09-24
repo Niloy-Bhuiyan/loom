@@ -131,6 +131,29 @@ a {
   height: 18px;
 }
 
+.install-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.install-btn[hidden] {
+  display: none;
+}
+
+.install-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
 /* ───────────────────────── Local badge ───────────────────────── */
 .local-badge {
   display: inline-flex;

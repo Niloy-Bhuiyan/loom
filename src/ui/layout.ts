@@ -2,6 +2,7 @@ import logoUrl from '../assets/logo.svg';
 import type { TalkMode } from '../config/settings';
 import { h } from './dom';
 import { icon } from './icons';
+import { installButton } from './install';
 
 export const SUGGESTIONS = [
   'Tell me a fun fact about octopuses',
@@ -66,7 +67,7 @@ export function buildLayout(): Layout {
       'header',
       { class: 'topbar' },
       h('div', { class: 'brand' }, h('img', { src: logoUrl, alt: '' }), 'Loom'),
-      h('div', { class: 'topbar-right' }, badge, settingsButton),
+      h('div', { class: 'topbar-right' }, installButton(), badge, settingsButton),
     ),
     stage,
     h('footer', { class: 'dock' }, modeSwitch, h('div', { class: 'talk-wrap' }, wave, talk), status, typeForm),
