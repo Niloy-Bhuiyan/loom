@@ -23,6 +23,11 @@ import { Waveform } from './ui/waveform';
 import { HandsFree } from './vad/hands-free';
 import { DocumentLibrary } from './docs/library';
 import { DocumentsUi } from './ui/documents';
+import { systemPromptFor } from './agent/prompt';
+import { ChatStore, titleFor, type SavedChat } from './chats/store';
+import { DEFAULT_MODE, findMode, type Mode } from './config/modes';
+import { openChatsDrawer } from './ui/chats-drawer';
+import { renderModePicker, renderSuggestions } from './ui/modes';
 
 const MAX_DOWNLOAD_RETRIES = 2;
 
@@ -61,6 +66,10 @@ export class App {
   private conversation: Conversation;
   private handsFree: HandsFree;
   private waveform: Waveform;
+  private chats = new ChatStore();
+  /** The saved chat being continued; created on the first thing the user says. */
+  private currentChat: SavedChat | null = null;
+  private mode: Mode = findMode(DEFAULT_MODE);
   private library = new DocumentLibrary();
   private docsUi = new DocumentsUi({
     onFiles: (files) => void this.addDocuments(files),
@@ -84,13 +93,22 @@ export class App {
 
     this.conversation = new Conversation({ stt: this.stt, llm: this.llm, tts: this.tts }, this.recorder, {
       onState: (s) => this.renderState(s),
-      onUserMessage: (t) => this.transcript.addUser(t),
+      onUserMessage: (t) => {
+        this.transcript.addUser(t);
+        this.persistChat();
+      },
       onAssistantStart: () => this.transcript.startAssistant(),
       onAssistantToken: (t) => this.transcript.appendAssistant(t),
-      onAssistantEnd: (_t, interrupted) => this.transcript.endAssistant(interrupted),
+      onAssistantEnd: (_t, interrupted) => {
+        this.transcript.endAssistant(interrupted);
+        this.persistChat();
+      },
       onNotice: (t) => this.transcript.addNotice(t),
       onError: (e) => this.showRuntimeError(e),
-      onRetract: () => this.transcript.retractLastUser(),
+      onRetract: () => {
+        this.transcript.retractLastUser();
+        this.persistChat();
+      },
     });
 
     this.handsFree = new HandsFree(this.recorder, {
@@ -115,6 +133,7 @@ export class App {
     this.docsUi.mount(this.layout.root);
     this.bindControls();
     this.renderModeSwitch();
+    this.renderModes();
     const refresh = () => renderConnectivity(this.layout, navigator.onLine, this.ready);
     window.addEventListener('online', refresh);
     window.addEventListener('offline', refresh);
@@ -245,7 +264,7 @@ export class App {
     this.ready = true;
     this.layout.talk.disabled = false;
     this.layout.typeInput.disabled = false;
-    for (const chip of this.layout.chips) chip.disabled = false;
+    this.renderModes();
     renderConnectivity(this.layout, navigator.onLine, true);
     this.renderState('idle');
     if (this.brain.upgradeTo) void this.startBrainUpgrade(this.brain.upgradeTo);
@@ -325,10 +344,8 @@ export class App {
       void this.conversation.sendText(text);
     });
 
-    for (const chip of this.layout.chips) {
-      chip.addEventListener('click', () => void this.conversation.sendText(chip.textContent ?? ''));
-    }
-
+    this.layout.chatsButton.addEventListener('click', () => void this.openChats());
+    this.layout.modePill.addEventListener('click', () => void this.openChats());
     this.layout.settingsButton.addEventListener('click', () => this.openSettings());
   }
 
@@ -408,6 +425,71 @@ export class App {
       // Reloading is the most reliable way to release GPU memory held by the old models.
       location.reload();
     }
+  }
+
+  // ───────────────────────── Modes & saved chats ─────────────────────────
+
+  private renderModes(): void {
+    renderModePicker(this.layout.modePicker, this.mode, (mode) => void this.pickMode(mode));
+    renderSuggestions(this.layout.chipsBox, this.mode, this.ready, (text) => void this.conversation.sendText(text));
+    this.layout.modePill.textContent = this.mode.id === DEFAULT_MODE ? '' : `${this.mode.emoji} ${this.mode.label}`;
+  }
+
+  private setMode(mode: Mode): void {
+    this.mode = mode;
+    this.conversation.setSystemPrompt(systemPromptFor(mode));
+    this.renderModes();
+  }
+
+  /** Chosen from the welcome screen: switch persona and have Loom say hello. */
+  private async pickMode(mode: Mode): Promise<void> {
+    this.setMode(mode);
+    if (this.ready && this.conversation.history.length === 0) await this.conversation.greet(mode.greeting);
+  }
+
+  private startNewChat(): void {
+    this.currentChat = null;
+    this.conversation.load([]);
+    this.transcript.clear();
+    this.renderModes();
+  }
+
+  private async openChat(id: string): Promise<void> {
+    const chat = await this.chats.get(id).catch(() => undefined);
+    if (!chat) return;
+    this.currentChat = chat;
+    this.setMode(findMode(chat.mode));
+    this.conversation.load(chat.messages);
+    this.transcript.showHistory(chat.messages);
+  }
+
+  /** Save the conversation on this device once the user has said something. */
+  private persistChat(): void {
+    const messages = [...this.conversation.history];
+    if (!messages.some((m) => m.role === 'user')) return;
+    const now = Date.now();
+    this.currentChat ??= { id: crypto.randomUUID(), title: '', mode: this.mode.id, messages: [], createdAt: now, updatedAt: now };
+    Object.assign(this.currentChat, { messages, title: titleFor(messages), mode: this.mode.id, updatedAt: now });
+    // IndexedDB can be unavailable (e.g. some private windows); chats then simply aren't kept.
+    this.chats.save({ ...this.currentChat }).catch((err: unknown) => console.warn('[loom] could not save chat', err));
+  }
+
+  private async openChats(): Promise<void> {
+    const chats = await this.chats.list().catch(() => []);
+    openChatsDrawer({
+      chats,
+      currentId: this.currentChat?.id ?? null,
+      onNew: () => this.startNewChat(),
+      onOpen: (id) => void this.openChat(id),
+      onDelete: (id) => {
+        void this.chats.delete(id);
+        if (this.currentChat?.id === id) this.startNewChat();
+      },
+      onDeleteAll: () => {
+        void this.chats.clear();
+        this.startNewChat();
+      },
+    });
   }
 
   // ───────────────────────── Documents ─────────────────────────

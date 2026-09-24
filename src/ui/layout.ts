@@ -4,19 +4,18 @@ import { h } from './dom';
 import { icon } from './icons';
 import { installButton } from './install';
 
-export const SUGGESTIONS = [
-  'Tell me a fun fact about octopuses',
-  'How do you work without the internet?',
-  'Give me a two-line poem about rain',
-  'Explain WebGPU like I’m five',
-];
-
 export interface Layout {
   root: HTMLElement;
   badge: HTMLElement;
   callout: HTMLElement;
   empty: HTMLElement;
-  chips: HTMLButtonElement[];
+  /** Mode cards in the welcome screen. */
+  modePicker: HTMLElement;
+  /** Suggestion chips for the current mode. */
+  chipsBox: HTMLElement;
+  chatsButton: HTMLButtonElement;
+  /** Shows the current mode in the top bar. */
+  modePill: HTMLButtonElement;
   stage: HTMLElement;
   talk: HTMLButtonElement;
   wave: HTMLCanvasElement;
@@ -34,7 +33,8 @@ export function buildLayout(): Layout {
 
   const callout = h('section', { class: 'callout', 'aria-live': 'polite' });
 
-  const chips = SUGGESTIONS.map((text) => h('button', { class: 'chip', type: 'button', disabled: true }, text));
+  const modePicker = h('div', { class: 'mode-picker', role: 'radiogroup', 'aria-label': 'What would you like to do?' });
+  const chipsBox = h('div', { class: 'chips' });
   const empty = h(
     'div',
     { class: 'empty' },
@@ -43,10 +43,13 @@ export function buildLayout(): Layout {
       'p',
       {},
       'Speech recognition, a language model and a neural voice all run on your GPU, right here in this tab. ' +
-        'No server, no API keys — nothing you say ever leaves your device.',
+        'No server, no API keys — nothing you say ever leaves your device. Drop in a PDF to talk about it privately.',
     ),
-    h('div', { class: 'chips' }, ...chips),
+    modePicker,
+    chipsBox,
   );
+  const chatsButton = h('button', { class: 'icon-btn', 'aria-label': 'Your chats', title: 'Your chats' }, icon('menu'));
+  const modePill = h('button', { type: 'button', class: 'mode-pill', title: 'Your chats' });
 
   const talk = h('button', { class: 'talk', 'data-state': 'idle', 'aria-label': 'Hold to talk', disabled: true }, icon('mic'));
   const wave = h('canvas', { class: 'wave', 'aria-hidden': 'true' });
@@ -76,14 +79,14 @@ export function buildLayout(): Layout {
     h(
       'header',
       { class: 'topbar' },
-      h('div', { class: 'brand' }, h('img', { src: logoUrl, alt: '' }), 'Loom'),
+      h('div', { class: 'brand' }, chatsButton, h('img', { src: logoUrl, alt: '' }), 'Loom', modePill),
       h('div', { class: 'topbar-right' }, installButton(), badge, settingsButton),
     ),
     stage,
     h('footer', { class: 'dock' }, modeSwitch, h('div', { class: 'talk-wrap' }, wave, talk), status, typeForm),
   );
 
-  return { root, badge, callout, empty, chips, stage, talk, wave, status, typeForm, typeInput, settingsButton, modeButtons, upgrade: { el: upgradeEl, text: upgradeText, fill: upgradeFill } };
+  return { root, badge, callout, empty, modePicker, chipsBox, chatsButton, modePill, stage, talk, wave, status, typeForm, typeInput, settingsButton, modeButtons, upgrade: { el: upgradeEl, text: upgradeText, fill: upgradeFill } };
 }
 
 /** Reflect connectivity in the badge and the Airplane Mode Test callout. */
