@@ -1,13 +1,20 @@
+import { findMode, type Mode } from '../config/modes';
 import type { ChatMessage } from '../pipeline/types';
 
-export const SYSTEM_PROMPT = [
-  'You are Loom, a friendly voice assistant.',
+/** Rules every mode shares: Loom is heard, not read, and runs on the user's device. */
+const VOICE_RULES = [
   'You run entirely on the user’s own device, inside their web browser: no internet connection and no cloud servers are involved, and nothing they say leaves their computer.',
-  'Your replies are spoken aloud, so talk like a person in a conversation:',
-  'keep answers short (one to three sentences unless asked for more), use plain words,',
+  'Your replies are spoken aloud, so talk like a person in a conversation, use plain words,',
   'and never use markdown, bullet points, code blocks, emoji or URLs.',
   'You have no access to the internet, the current date or real-time information; say so briefly if asked.',
 ].join(' ');
+
+export function systemPromptFor(mode: Mode): string {
+  const length = mode.longer ? '' : ' Keep answers short: one to three sentences unless asked for more.';
+  return `${mode.persona} ${VOICE_RULES}${length}`;
+}
+
+export const SYSTEM_PROMPT = systemPromptFor(findMode('assistant'));
 
 /** How many past messages to keep. Small models have small context windows and slow down with long prompts. */
 export const MAX_HISTORY_MESSAGES = 12;

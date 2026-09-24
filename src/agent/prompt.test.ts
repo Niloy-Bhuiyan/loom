@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatMessage } from '../pipeline/types';
-import { buildMessages, MAX_HISTORY_MESSAGES } from './prompt';
+import { findMode, MODES } from '../config/modes';
+import { buildMessages, MAX_HISTORY_MESSAGES, systemPromptFor } from './prompt';
 
 const turn = (i: number): ChatMessage[] => [
   { role: 'user', content: `q${i}` },
@@ -36,6 +37,21 @@ describe('buildMessages', () => {
     expect(msgs.at(-1)?.content).toContain('Revenue was $5M.');
     expect(msgs.at(-1)?.content).toContain('reply to: What was revenue?');
     expect(history.at(-1)?.content).toBe('What was revenue?');
+  });
+
+  it('builds mode prompts from the persona plus the shared voice rules', () => {
+    const english = systemPromptFor(findMode('english'));
+    expect(english).toContain('English conversation partner');
+    expect(english).toContain('spoken aloud');
+    expect(english).toContain('one to three sentences');
+    expect(systemPromptFor(findMode('stories'))).not.toContain('one to three sentences');
+  });
+
+  it('every mode has a greeting and suggestions', () => {
+    for (const mode of MODES) {
+      expect(mode.greeting.length).toBeGreaterThan(10);
+      expect(mode.suggestions.length).toBeGreaterThanOrEqual(3);
+    }
   });
 
   it('ignores empty context', () => {
