@@ -1,3 +1,5 @@
+// Self-hosted (no font CDN), so the UI looks the same offline.
+import '@fontsource-variable/geist';
 import './styles.css';
 import { App } from './app';
 import { loadSettings } from './config/settings';
