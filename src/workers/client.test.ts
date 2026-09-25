@@ -64,6 +64,25 @@ describe('WorkerClient', () => {
     await expect(run).rejects.toThrow('nope');
   });
 
+  it('cancels a run when its signal aborts, ignoring a late result', async () => {
+    const { fake, client } = setup();
+    const controller = new AbortController();
+    const run = client.run('stale', undefined, controller.signal);
+    controller.abort();
+
+    await expect(run).rejects.toThrow('Aborted');
+    expect(fake.sent.at(-1)).toEqual({ type: 'cancel', id: 1 });
+    expect(() => fake.reply({ type: 'result', id: 1, data: 'late' })).not.toThrow();
+  });
+
+  it('rejects immediately for an already-aborted signal', async () => {
+    const { fake, client } = setup();
+    const controller = new AbortController();
+    controller.abort();
+    await expect(client.run('x', undefined, controller.signal)).rejects.toThrow('Aborted');
+    expect(fake.sent).toEqual([]);
+  });
+
   it('fails everything in flight when terminated', async () => {
     const { client } = setup();
     const run = client.run('x');

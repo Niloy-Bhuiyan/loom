@@ -30,11 +30,22 @@ export class WorkerClient<Config, Req, Res, Partial = never> {
     });
   }
 
-  run(req: Req, onPartial?: (data: Partial) => void): Promise<Res> {
+  /** Run a request. Aborting rejects immediately and skips the run if the worker hasn't started it. */
+  run(req: Req, onPartial?: (data: Partial) => void, signal?: AbortSignal): Promise<Res> {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
+      if (signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'));
       this.pending.set(id, { resolve, reject, onPartial });
       this.post({ type: 'run', id, req });
+      signal?.addEventListener(
+        'abort',
+        () => {
+          if (!this.pending.delete(id)) return;
+          this.post({ type: 'cancel', id });
+          reject(new DOMException('Aborted', 'AbortError'));
+        },
+        { once: true },
+      );
     });
   }
 

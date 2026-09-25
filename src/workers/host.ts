@@ -1,6 +1,6 @@
 import type { ModelProgressEvent } from '../core/progress';
 import { errorMessage } from '../core/errors';
-import type { FromWorker, ToWorker } from './protocol';
+import { CANCELLED, type FromWorker, type ToWorker } from './protocol';
 
 export interface LoadContext {
   progress(event: ModelProgressEvent): void;
@@ -34,6 +34,8 @@ export function serveWorker<Config, Req, Res, Partial>(handlers: WorkerHandlers<
 
   // Inference sessions are not re-entrant, so queue runs behind each other.
   let queue: Promise<void> = Promise.resolve();
+  // Runs the client no longer wants; skipped if they haven't started yet.
+  const cancelled = new Set<number>();
 
   scope.addEventListener('message', (e: MessageEvent<ToWorker<Config, Req>>) => {
     const msg = e.data;
@@ -49,14 +51,18 @@ export function serveWorker<Config, Req, Res, Partial>(handlers: WorkerHandlers<
         break;
       case 'run': {
         const { id, req } = msg;
-        queue = queue.then(() =>
-          handlers
+        queue = queue.then(() => {
+          if (cancelled.delete(id)) return send({ type: 'error', id, message: CANCELLED });
+          return handlers
             .run(req, { partial: (data) => send({ type: 'partial', id, data }) })
             .then(({ result, transfer }) => send({ type: 'result', id, data: result }, transfer))
-            .catch((err: unknown) => send({ type: 'error', id, message: errorMessage(err) })),
-        );
+            .catch((err: unknown) => send({ type: 'error', id, message: errorMessage(err) }));
+        });
         break;
       }
+      case 'cancel':
+        cancelled.add(msg.id);
+        break;
       case 'interrupt':
         handlers.interrupt?.();
         break;

@@ -8,7 +8,12 @@ import type { ModelProgressEvent } from '../core/progress';
 export type ToWorker<Config, Req> =
   | { type: 'load'; config: Config }
   | { type: 'run'; id: number; req: Req }
+  /** Drop a queued run that hasn't started (e.g. a transcription made stale by a newer one). */
+  | { type: 'cancel'; id: number }
   | { type: 'interrupt' };
+
+/** Error message for a run cancelled before it started. */
+export const CANCELLED = 'Cancelled';
 
 export type FromWorker<Res, Partial> =
   | { type: 'progress'; event: ModelProgressEvent }
