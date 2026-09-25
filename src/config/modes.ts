@@ -6,7 +6,8 @@
 export interface Mode {
   id: string;
   label: string;
-  emoji: string;
+  /** CSS colour of this mode's face avatar (≥ 3:1 contrast against the background). */
+  color: string;
   /** One line for the picker. */
   blurb: string;
   /** What Loom says out loud when the mode starts. */
@@ -22,7 +23,7 @@ export const MODES: readonly Mode[] = [
   {
     id: 'assistant',
     label: 'Assistant',
-    emoji: '💬',
+    color: 'var(--ink)',
     blurb: 'Ask anything, privately',
     greeting: 'Hi, I’m Loom. Everything I do happens on your device. What’s on your mind?',
     persona: 'You are Loom, a friendly, helpful voice assistant.',
@@ -31,7 +32,7 @@ export const MODES: readonly Mode[] = [
   {
     id: 'english',
     label: 'English practice',
-    emoji: '🗣️',
+    color: '#1fa589',
     blurb: 'Speak English, get gentle corrections',
     greeting: 'Let’s practice speaking English together. Tell me about your day — don’t worry about mistakes.',
     persona:
@@ -43,7 +44,7 @@ export const MODES: readonly Mode[] = [
   {
     id: 'interview',
     label: 'Interview coach',
-    emoji: '🎯',
+    color: '#e8892b',
     blurb: 'Rehearse interviews out loud',
     greeting: 'I’ll be your interview coach. What role are you preparing for?',
     persona:
@@ -54,7 +55,7 @@ export const MODES: readonly Mode[] = [
   {
     id: 'stories',
     label: 'Story time',
-    emoji: '📖',
+    color: '#7b5cf0',
     blurb: 'Make up stories together',
     greeting: 'Let’s make up a story together. Who should our hero be?',
     persona:
@@ -66,7 +67,7 @@ export const MODES: readonly Mode[] = [
   {
     id: 'brainstorm',
     label: 'Brainstorm',
-    emoji: '💡',
+    color: '#2f7ae5',
     blurb: 'Think out loud with a partner',
     greeting: 'Let’s brainstorm. What are we thinking about?',
     persona:

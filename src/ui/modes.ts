@@ -1,5 +1,6 @@
 import { MODES, type Mode } from '../config/modes';
 import { h } from './dom';
+import { faceSvg } from './face';
 
 /** Mode cards on the welcome screen. */
 export function renderModePicker(container: HTMLElement, current: Mode, onPick: (mode: Mode) => void): void {
@@ -14,7 +15,7 @@ export function renderModePicker(container: HTMLElement, current: Mode, onPick: 
           'aria-checked': String(mode.id === current.id),
           onclick: () => onPick(mode),
         },
-        h('span', { class: 'mode-emoji', 'aria-hidden': 'true' }, mode.emoji),
+        faceSvg(mode.color, 32),
         h('span', { class: 'mode-label' }, mode.label),
         h('span', { class: 'mode-blurb' }, mode.blurb),
       ),
@@ -27,4 +28,9 @@ export function renderSuggestions(container: HTMLElement, mode: Mode, enabled: b
   container.replaceChildren(
     ...mode.suggestions.map((text) => h('button', { type: 'button', class: 'chip', disabled: !enabled, onclick: () => onPick(text) }, text)),
   );
+}
+
+/** The current mode in the top bar. */
+export function renderChatTitle(container: HTMLElement, mode: Mode): void {
+  container.replaceChildren(faceSvg(mode.color, 22), h('span', {}, mode.label));
 }
