@@ -92,6 +92,15 @@ export const LLM_PRESETS: readonly LlmPreset[] = [
 export const SUPERTONIC_MODEL = 'onnx-community/Supertonic-TTS-ONNX';
 export const SUPERTONIC_APPROX_MB = 265;
 
+/** Where a Supertonic voice style lives (also its key in the `loom-voices` cache). */
+export function voiceUrl(voiceId: string, model = SUPERTONIC_MODEL): string {
+  return `https://huggingface.co/${model}/resolve/main/voices/${voiceId}.bin`;
+}
+
+/** Small sentence-embedding model used to search documents (runs on the CPU). */
+export const EMBED_MODEL = 'Xenova/all-MiniLM-L6-v2';
+export const EMBED_DTYPE = 'q8';
+
 /** Voice style embeddings shipped in the Supertonic repo (`voices/<id>.bin`). */
 export const SUPERTONIC_VOICES: readonly VoicePreset[] = [
   { id: 'F1', label: 'Female 1' },

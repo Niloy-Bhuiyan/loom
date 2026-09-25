@@ -3,7 +3,7 @@ import type { ModelProgressEvent } from '../core/progress';
 import { reportCacheStatus } from '../workers/cache-status';
 import { serveWorker } from '../workers/host';
 
-export const EMBED_MODEL = 'Xenova/all-MiniLM-L6-v2';
+import { EMBED_DTYPE, EMBED_MODEL } from '../config/models';
 
 export interface EmbedRequest {
   texts: string[];
@@ -21,10 +21,10 @@ let extractor: FeatureExtractionPipeline | null = null;
 serveWorker<Record<string, never>, EmbedRequest, EmbedResult, EmbedProgress>({
   async load(_config, ctx) {
     // Small (23 MB, 8-bit) and on the CPU, so it never competes with the chat model for GPU memory.
-    await reportCacheStatus('feature-extraction', EMBED_MODEL, { dtype: 'q8', device: 'wasm' }, ctx);
+    await reportCacheStatus('feature-extraction', EMBED_MODEL, { dtype: EMBED_DTYPE, device: 'wasm' }, ctx);
     extractor = (await pipeline('feature-extraction', EMBED_MODEL, {
       device: 'wasm',
-      dtype: 'q8',
+      dtype: EMBED_DTYPE,
       progress_callback: (info) => ctx.progress(info as ModelProgressEvent),
     })) as FeatureExtractionPipeline;
     return 'wasm';

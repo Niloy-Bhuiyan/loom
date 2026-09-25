@@ -2,6 +2,7 @@ import { pipeline, type TextToAudioPipeline } from '@huggingface/transformers';
 import type { ModelProgressEvent } from '../core/progress';
 import { reportCacheStatus } from '../workers/cache-status';
 import { serveWorker } from '../workers/host';
+import { voiceUrl } from '../config/models';
 
 export interface SupertonicConfig {
   model: string;
@@ -32,7 +33,7 @@ async function loadVoice(id: string): Promise<Float32Array> {
   const cached = voices.get(id);
   if (cached) return cached;
 
-  const url = `https://huggingface.co/${modelId}/resolve/main/voices/${id}.bin`;
+  const url = voiceUrl(id, modelId);
   const cache = 'caches' in self ? await caches.open(VOICE_CACHE) : null;
   let response = await cache?.match(url);
   if (!response) {
