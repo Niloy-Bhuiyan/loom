@@ -36,15 +36,19 @@ export class HandsFree {
     try {
       await this.recorder.start(port1);
       await new Promise<void>((resolve, reject) => {
+        let ready = false;
         worker.onmessage = (e: MessageEvent<FromVad>) => {
           const msg = e.data;
-          if (msg.type === 'ready') resolve();
-          else if (msg.type === 'speech-start') this.events.onSpeechStart();
+          if (msg.type === 'ready') {
+            ready = true;
+            resolve();
+          } else if (msg.type === 'speech-start') this.events.onSpeechStart();
           else if (msg.type === 'speech-end') this.events.onSpeechEnd(msg.audio);
           else if (msg.type === 'error') {
+            // Before "ready" the caller of start() reports it; afterwards it's a runtime error.
             const error = new Error(msg.message);
-            reject(error);
-            this.events.onError(error);
+            if (ready) this.events.onError(error);
+            else reject(error);
           }
         };
         worker.onerror = (e) => reject(new Error(e.message || 'Voice detection failed to start'));
