@@ -1,14 +1,81 @@
+<div align="center">
+
 # Loom
 
-> **Talk to an AI with your wifi off — 100% local, in your browser.**
+**Talk to an AI with your wifi off — 100% local, in your browser.**
+
+[![CI](https://github.com/Niloy-Bhuiyan/loom/actions/workflows/deploy.yml/badge.svg)](https://github.com/Niloy-Bhuiyan/loom/actions/workflows/deploy.yml)
+![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178c6)
+![Tests](https://img.shields.io/badge/tests-137%20passing-12a150)
+![No backend](https://img.shields.io/badge/backend-none-111110)
+![API keys](https://img.shields.io/badge/API%20keys-0-111110)
+[![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
+
+<img src="docs/screenshots/welcome.png" alt="Loom's welcome screen: 'Meet Loom', five conversation modes, a voice orb and a message box" width="860">
+
+</div>
 
 Loom is a voice assistant that runs entirely inside a browser tab. Your speech is
-transcribed, answered and spoken back by three AI models running on **your own
-GPU via WebGPU**. There is no backend, no API key, and nothing you say ever
-leaves your device. Once the models are cached you can switch on airplane mode
-and keep talking.
+transcribed, answered and spoken back by AI models running on **your own GPU via
+WebGPU**. There is no server, no API key, and nothing you say leaves your device —
+switch on airplane mode and keep talking.
 
 <!-- TODO: record and embed a demo GIF here showing wifi being turned off mid-conversation -->
+
+**▶ Live demo:** `https://niloy-bhuiyan.github.io/loom/` *(after enabling GitHub Pages — see [Deploying](#deploying-github-pages))*
+
+## What makes it interesting
+
+This isn't a UI on top of an API. Every piece below runs in the browser:
+
+| | How |
+| --- | --- |
+| **Seven models / workers, no server** | Whisper (speech-to-text), Qwen2.5 (reasoning), Supertonic (neural voice), Silero (voice detection), MiniLM (document search) — each in its own Web Worker on WebGPU or WASM, behind swappable TypeScript interfaces. |
+| **Speaks while it thinks** | LLM tokens stream into a sentence chunker; each finished sentence is synthesized and played while the next is still being generated. |
+| **Talks like a phone call** | Silero VAD decides when you start and stop. Pauses mid-thought are merged (the half-heard message is withdrawn and re-transcribed with the rest); talking over Loom interrupts it; stricter thresholds while it speaks stop it hearing itself. |
+| **Private RAG** | Drop in a PDF; pdf.js + MiniLM embeddings + a hybrid keyword/vector search answer questions about it — the file never leaves the tab. |
+| **Proves it's local** | An *Under the hood* panel shows live timings, tokens/sec, the GPU in use — and counts network requests since Loom became ready. It stays at **0**. |
+| **Works offline, even the first reload** | Models, ONNX Runtime and the app shell are cached; **Background Fetch** keeps multi-GB downloads going after the tab is closed. |
+| **Defends against real hardware** | A warm-up self-test caught a GPU whose 16-bit math returns garbage ("2 + 2 = 10") and transparently switches it to 32-bit weights. |
+| **Starts fast** | A light brain loads first; the bigger one downloads in the background and swaps in between turns. |
+
+Numbers: **140+ commits · 137 unit tests · TypeScript strict · ~5,600 lines of TS · 87 KB main bundle** (models load on demand).
+
+## Screenshots
+
+| Conversation | Under the hood (live proof) |
+| --- | --- |
+| <img src="docs/screenshots/conversation.png" alt="A conversation with Loom" width="420"> | <img src="docs/screenshots/proof-panel.png" alt="The Under the hood panel with live timings, tokens per second and zero network requests" width="420"> |
+| **Network off — still answering** | **Dark mode** |
+| <img src="docs/screenshots/offline.png" alt="Loom answering with the network switched off in Chrome" width="420"> | <img src="docs/screenshots/dark.png" alt="Loom in dark mode" width="420"> |
+| **Hands-free voice** | **Phone** |
+| <img src="docs/screenshots/voice.png" alt="A spoken question and Loom's reply" width="420"> | <img src="docs/screenshots/mobile.png" alt="Loom on a phone-sized screen" width="200"> |
+
+The shareable speed card Loom generates from your last reply:
+
+<img src="docs/screenshots/speed-card.png" alt="Speed card: 'My laptop runs AI with the wifi off' with measured tokens per second" width="600">
+
+All screenshots were captured from real runs in Chrome on an Intel UHD integrated
+GPU (see [How the screenshots were made](#how-the-screenshots-were-made)).
+
+## Demo it in an interview (or anywhere)
+
+The models download **once per browser**, not per visit — so prepare beforehand:
+
+1. **The day before**, open Loom in Chrome on your laptop and click
+   **Download in the background**. You can close the tab; Chrome keeps
+   downloading and shows it in its downloads bar.
+2. Check the sidebar says **✓ Ready for offline**. Optionally click **Install**
+   so Loom opens like a native app.
+3. **Just before the interview**, open Loom and let it start (it loads from disk,
+   but warming up the GPU takes ~30 s on an integrated GPU — do it before
+   you share your screen). Then pick a mode, tap the orb and talk.
+4. Open **Under the hood** so they can see the network counter at 0 — then
+   **turn off your wifi** and keep talking.
+5. Drop in a PDF (a job description works well) and ask about it out loud.
+6. Keep a short screen recording as a backup, in case the demo machine misbehaves.
+
+## Features
 
 - 📞 **Hands-free, like a phone call** — just talk; on-device voice detection (Silero VAD) knows when you start, pause and finish, and you can cut Loom off mid-sentence
 - 📄 **Talk to your documents** — drop in a PDF or text file and ask about it out loud; it's read, indexed and searched entirely on your device
@@ -16,6 +83,8 @@ and keep talking.
 - 💾 **Saved chats** — conversations are kept in your browser (IndexedDB), never uploaded
 - ⚡ **Fast start** — starts talking with a light model while the smarter one downloads in the background, then swaps it in
 - 📲 **Installable** — add Loom to your desktop or home screen and use it like an offline app
+- 🛰️ **Download in the background** — close the tab and Chrome keeps downloading; the sidebar shows **Ready for offline** when everything is on disk
+- 🔍 **Under the hood** — live speech-to-text time, time to first word, tokens/sec, reply latency, GPU, and a network-request counter; plus a shareable speed card
 - 🎙️ **Speech in** — Whisper on WebGPU · 🧠 **Reasoning** — Qwen2.5 (up to Qwen3 4B) on WebGPU · 🔊 **Speech out** — Supertonic neural TTS on WebGPU
 - ✈️ **Offline after first load** — models, runtime and app shell are all cached
 - 🧩 **Swappable stages** — each model sits behind a small TypeScript interface
@@ -52,22 +121,24 @@ Other scripts:
 
 ## How it works
 
+```mermaid
+flowchart LR
+  mic([🎙 Microphone]) --> worklet[AudioWorklet<br/>raw PCM]
+  worklet -->|stream| vad[VAD worker<br/>Silero · WASM]
+  vad -->|utterance, 16 kHz| stt[STT worker<br/>Whisper · WebGPU]
+  stt -->|text| convo{{Conversation<br/>turns · barge-in · pauses}}
+  docs[(Your PDF)] --> rag[Embed worker<br/>MiniLM · WASM<br/>hybrid search]
+  rag -->|relevant excerpts| convo
+  convo -->|prompt| llm[LLM worker<br/>Qwen2.5 · WebGPU]
+  llm -->|streamed tokens| chunk[Sentence chunker]
+  chunk -->|one sentence at a time| tts[TTS worker<br/>Supertonic · WebGPU]
+  tts -->|44.1 kHz PCM| player[Gapless player] --> spk([🔊 Speakers])
+  hub[(huggingface.co<br/>one-time download)] -. Background Fetch / Cache API .-> cache[(Browser cache)]
+  cache -.-> stt & llm & tts & rag
 ```
-                        ┌───────────────────── your browser tab ─────────────────────┐
-                        │                                                            │
- 🎙 mic ─▶ AudioWorklet ─▶ 16 kHz PCM ─▶ [STT worker]  Whisper base.en   (WebGPU)     │
-                        │                     │ text                                 │
-                        │                     ▼                                      │
-                        │               [LLM worker]  Qwen2.5-1.5B-Instruct (WebGPU) │
-                        │                     │ streamed tokens                      │
-                        │                     ▼                                      │
-                        │             sentence chunker ─▶ [TTS worker] Supertonic    │
-                        │                                     │ 44.1 kHz PCM         │
- 🔊 speakers ◀──────────────────────────── gapless player ◀────┘                      │
-                        └────────────────────────────────────────────────────────────┘
-                                         ▲
-               network is used only once │ to download model weights from huggingface.co
-```
+
+Everything inside the diagram runs in the browser tab. The dotted lines are the
+only network use: downloading model files once, into the Cache API.
 
 1. **Capture.** While you hold the button, an inline `AudioWorklet` records raw
    PCM from the microphone. On release, audio is resampled to 16 kHz. Silent or
@@ -138,10 +209,11 @@ src/
   vad/                   Silero VAD worker, speech segmenter, hands-free controller
   docs/                  PDF/text extraction, chunking, embeddings, hybrid search
   chats/                 Saved conversations (IndexedDB)
+  offline/               Offline plan, readiness check, Background Fetch + in-tab downloads
   audio/                 Mic capture, streaming resampler, PCM playback
   workers/               Shared worker message protocol
-  core/                  Capability detection, errors, progress, caching, text utils
-  ui/                    Layout, transcript, waveform, loader, dialogs, settings, drawers
+  core/                  Capability detection, errors, progress, caching, network monitor, text utils
+  ui/                    Layout, face mascot, transcript, waveform, loader, proof panel, speed card, dialogs
   config/                Model presets, modes and persisted settings
 ```
 
@@ -229,6 +301,25 @@ If WebGPU isn't available, Loom shows a friendly explanation instead of loading.
 - The microphone and WebGPU only work on **secure origins** (`https://` or
   `http://localhost`).
 
+### Measured speed (low-end hardware)
+
+Real numbers from Loom's own *Under the hood* panel on a Windows laptop with
+an **Intel UHD (Gen-9) integrated GPU**, light models, 32-bit weights (this
+GPU fails the 16-bit self-test):
+
+| What | Measured |
+| --- | --- |
+| Start from cache (load + GPU warm-up) | 28–37 s |
+| Speech → text (Whisper tiny) | ~1.3 s |
+| First word of the reply | 1.4–4.1 s |
+| Generation speed (Qwen2.5 0.5B) | 2.6–7.3 tokens/s |
+| Loom starts talking after you finish | 3.7–7.4 s |
+| Network requests after start | 0 |
+
+This is close to the floor of what WebGPU runs on; a discrete GPU or Apple
+Silicon will be much faster. Loom measures on *your* device and the speed
+card shares that number — not a benchmark from somewhere else.
+
 ### Troubleshooting
 
 | Symptom | What's going on / what to do |
@@ -285,6 +376,30 @@ trackers are loaded.
   icon next to it in the sidebar, or all of them by clearing site data.
 - Settings are stored in `localStorage`; model files in the Cache API. Use
   **Settings → Clear downloaded models** to remove them.
+
+## Problems found by testing on real hardware
+
+Each of these came from running Loom for real, not from a spec — details and
+evidence are in [DESIGN_NOTES.md](DESIGN_NOTES.md).
+
+| Found | Fix |
+| --- | --- |
+| An Intel iGPU advertised 16-bit float support but computed garbage — the LLM answered "10" to "2 + 2". | Warm-up self-test; automatic fallback to 32-bit weights, remembered per device. |
+| Natural pauses split one spoken question into three, so Loom started answering "Hello" and got cut off. | A resumed utterance before Loom speaks withdraws the partial message and re-transcribes both parts together. |
+| Queued transcriptions of those partial utterances delayed the merged one by ~18 s. | Every turn change aborts the previous turn's queued Whisper job. |
+| "What is the wifi password?" scored −0.002 against the passage containing it (embedding dominated by other topics). | Hybrid keyword + embedding ranking; short documents are passed whole. 8/8 on a harder test. |
+| A dropped connection at 77% killed a 1.7 GB background download. | Retries that skip already-cached files. |
+| A Chromium-based browser exposed Background Fetch but never downloaded a byte. | A 20 s watchdog falls back to in-tab downloading and remembers not to offer it again. |
+| The loader said "no download needed" while it was downloading (the cache had been evicted). | Each worker asks Transformers.js's `ModelRegistry` what is actually cached. |
+
+## How the screenshots were made
+
+The screenshots in this README come from a real, scripted session in Google
+Chrome (driven with `puppeteer-core`) on a Windows laptop with an Intel UHD
+integrated GPU, using the light models (Whisper tiny, Qwen2.5 0.5B, Supertonic):
+first-visit background download, typed questions, a spoken question played into
+Chrome's fake microphone, and a reply with Chrome's network switched to offline.
+Replies and timings are whatever the models actually produced.
 
 ## Contributing
 
