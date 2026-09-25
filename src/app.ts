@@ -508,7 +508,7 @@ export class App {
         this.conversation.setRetriever((q) => this.library.retrieve(q));
         this.layout.typeInput.placeholder = `Ask about ${doc.name}…`;
         this.transcript.addNotice(
-          `📄 Read “${doc.name}”${doc.pages ? ` (${doc.pages} pages)` : ''} on this device. Ask me anything about it — the file never leaves your computer.`,
+          `📄 Read “${doc.name}”${doc.pages ? ` (${doc.pages} page${doc.pages === 1 ? '' : 's'})` : ''} on this device. Ask me anything about it — the file never leaves your computer.`,
         );
       } catch (err) {
         show(null);
