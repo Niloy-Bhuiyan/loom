@@ -1,25 +1,19 @@
-import { EMBED_MODEL, findLlm, findStt, SUPERTONIC_APPROX_MB } from '../config/models';
+import { EMBED_MODEL } from '../config/models';
 import type { Settings } from '../config/settings';
 import { markModelsCached } from '../core/model-cache';
-import { canDownloadInBackground, checkReadiness, downloadInBackground, downloadInPage, offlineUrls, resumeBackgroundDownload, type DownloadProgress } from './offline';
+import type { ManifestFile } from './manifest.worker';
+import { canDownloadInBackground, checkReadiness, downloadInBackground, downloadInPage, offlineFiles, resumeBackgroundDownload, type DownloadProgress } from './offline';
 import { offlinePlan, type OfflinePlan } from './plan';
 
 export type OfflineState =
   | { kind: 'checking' }
-  | { kind: 'ready' }
-  | { kind: 'missing'; cached: number; total: number; approxMB: number; background: boolean }
-  | { kind: 'downloading'; downloadedBytes: number | null; approxMB: number; background: boolean }
+  | { kind: 'ready'; totalBytes: number }
+  | { kind: 'missing'; cached: number; total: number; missingBytes: number; background: boolean }
+  /** `totalBytes` is what this download has to fetch (0 if unknown). */
+  | { kind: 'downloading'; downloadedBytes: number | null; totalBytes: number; background: boolean }
   | { kind: 'failed'; message: string }
   /** Can't tell (e.g. offline before anything was ever downloaded). */
   | { kind: 'unknown' };
-
-/** Rough size of everything in the plan, for "≈1.7 GB" style messages. */
-function approxMB(settings: Settings): number {
-  const runtime = 27;
-  const embed = 23;
-  const voice = settings.tts === 'supertonic' ? SUPERTONIC_APPROX_MB : 0;
-  return findStt(settings.stt).approxMB + findLlm(settings.llm).approxMB + voice + embed + runtime;
-}
 
 /**
  * "Is this device ready to demo with the wifi off?" — and if not, get it
@@ -27,11 +21,13 @@ function approxMB(settings: Settings): number {
  */
 export class OfflineManager {
   private plan: OfflinePlan;
-  private urls: string[] | null = null;
+  private files: ManifestFile[] | null = null;
   private state: OfflineState = { kind: 'checking' };
+  /** Bytes the current download has to fetch, for progress. */
+  private downloadBytes = 0;
 
   constructor(
-    private settings: Settings,
+    settings: Settings,
     shaderF16: boolean,
     private onChange: (state: OfflineState) => void,
   ) {
@@ -56,12 +52,13 @@ export class OfflineManager {
 
   /** Download whatever is missing. Resolves when done (or failed). */
   async download(): Promise<void> {
-    const urls = await this.resolveUrls();
-    const { missing } = await checkReadiness(urls);
-    if (missing.length === 0) return void (await this.recheck());
-    const background = await canDownloadInBackground();
-    this.progress({ downloaded: 0 }, background);
     try {
+      const { missing, missingBytes } = await checkReadiness(await this.resolveFiles());
+      if (missing.length === 0) return void (await this.recheck());
+      this.downloadBytes = missingBytes;
+      const background = await canDownloadInBackground();
+      this.progress({ downloaded: 0 }, background);
+
       const result = background ? await downloadInBackground(missing, (p) => this.progress(p, true)) : 'stalled';
       if (result === 'failed') throw new Error('The background download didn’t finish.');
       // No Background Fetch (or it never started): download here; the tab has to stay open.
@@ -74,14 +71,13 @@ export class OfflineManager {
 
   private async recheck(): Promise<OfflineState> {
     try {
-      const urls = await this.resolveUrls();
-      const { cached, total } = await checkReadiness(urls);
+      const { cached, total, missingBytes, totalBytes } = await checkReadiness(await this.resolveFiles());
       if (cached === total) {
         // Every model is on disk: skip the fast-start detour and first-run prompt from now on.
         markModelsCached(this.plan.models.map((m) => m.model).filter((m) => m !== EMBED_MODEL));
-        this.set({ kind: 'ready' });
+        this.set({ kind: 'ready', totalBytes });
       } else {
-        this.set({ kind: 'missing', cached, total, approxMB: approxMB(this.settings), background: await canDownloadInBackground() });
+        this.set({ kind: 'missing', cached, total, missingBytes, background: await canDownloadInBackground() });
       }
     } catch {
       this.set({ kind: 'unknown' });
@@ -89,13 +85,13 @@ export class OfflineManager {
     return this.state;
   }
 
-  private async resolveUrls(): Promise<string[]> {
-    this.urls ??= await offlineUrls(this.plan);
-    return this.urls;
+  private async resolveFiles(): Promise<ManifestFile[]> {
+    this.files ??= await offlineFiles(this.plan);
+    return this.files;
   }
 
   private progress(p: DownloadProgress, background: boolean): void {
-    this.set({ kind: 'downloading', downloadedBytes: p.downloaded, approxMB: approxMB(this.settings), background });
+    this.set({ kind: 'downloading', downloadedBytes: p.downloaded, totalBytes: this.downloadBytes, background });
   }
 
   private set(state: OfflineState): void {

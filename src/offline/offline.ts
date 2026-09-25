@@ -1,11 +1,14 @@
 import { WorkerClient } from '../workers/client';
-import type { ManifestRequest } from './manifest.worker';
+import type { ManifestFile, ManifestRequest } from './manifest.worker';
 import { cacheNameFor, type OfflinePlan } from './plan';
 
 export interface Readiness {
   total: number;
   cached: number;
   missing: string[];
+  /** Sizes as reported by the servers (files without a known size count as 0). */
+  missingBytes: number;
+  totalBytes: number;
 }
 
 export interface DownloadProgress {
@@ -32,29 +35,35 @@ interface BackgroundFetchManager {
 
 const FETCH_ID = 'loom-offline-models';
 
-/** Exact URLs (= cache keys) for everything in the plan. */
-export async function offlineUrls(plan: OfflinePlan): Promise<string[]> {
-  const client = new WorkerClient<Record<string, never>, ManifestRequest, string[]>(
+/** Exact URLs (= cache keys) and sizes for everything in the plan. */
+export async function offlineFiles(plan: OfflinePlan): Promise<ManifestFile[]> {
+  const client = new WorkerClient<Record<string, never>, ManifestRequest, ManifestFile[]>(
     new Worker(new URL('./manifest.worker.ts', import.meta.url), { type: 'module', name: 'loom-manifest' }),
   );
   try {
     await client.load({}, () => {});
-    return [...(await client.run({ models: plan.models })), ...plan.extraUrls];
+    return await client.run({ models: plan.models, extraUrls: plan.extraUrls });
   } finally {
     client.terminate();
   }
 }
 
-/** Which of `urls` are already in the browser cache. */
-export async function checkReadiness(urls: readonly string[]): Promise<Readiness> {
+/** Which files are already in the browser cache, and how many bytes are still to come. */
+export async function checkReadiness(files: readonly ManifestFile[]): Promise<Readiness> {
   const missing: string[] = [];
+  let missingBytes = 0;
+  let totalBytes = 0;
   const opened = new Map<string, Cache>();
-  for (const url of urls) {
+  for (const { url, size } of files) {
     const name = cacheNameFor(url);
     if (!opened.has(name)) opened.set(name, await caches.open(name));
-    if (!(await opened.get(name)!.match(url))) missing.push(url);
+    totalBytes += size ?? 0;
+    if (!(await opened.get(name)!.match(url))) {
+      missing.push(url);
+      missingBytes += size ?? 0;
+    }
   }
-  return { total: urls.length, cached: urls.length - missing.length, missing };
+  return { total: files.length, cached: files.length - missing.length, missing, missingBytes, totalBytes };
 }
 
 async function backgroundFetchManager(): Promise<BackgroundFetchManager | null> {

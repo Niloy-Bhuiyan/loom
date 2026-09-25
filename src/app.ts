@@ -233,9 +233,9 @@ export class App {
     renderOfflineStatus(this.layout.offlineStatus, state, () => void this.offline.download());
     if (!this.bootLoader) return;
     if (state.kind === 'downloading') {
-      const total = state.approxMB * 1024 * 1024;
-      const fraction = state.downloadedBytes ? Math.min(0.99, state.downloadedBytes / total) : null;
-      const detail = state.downloadedBytes ? `${formatBytes(state.downloadedBytes)} of ≈${formatBytes(total)} saved` : 'Starting…';
+      const { downloadedBytes: done, totalBytes: total } = state;
+      const fraction = done && total ? Math.min(1, done / total) : null;
+      const detail = done ? `${formatBytes(done)}${total ? ` of ${formatBytes(total)}` : ''} saved` : 'Starting…';
       this.bootLoader.showBackground(detail, fraction, state.background);
     } else if (state.kind === 'failed') {
       this.bootLoader.showBackground(`${state.message} Reload the page to resume — files that arrived are kept.`, 0);
