@@ -8,28 +8,13 @@ export interface ManifestRequest {
   extraUrls: string[];
 }
 
-export interface ManifestFile {
-  url: string;
-  /** Bytes, from a HEAD request; null if the server didn't say. */
-  size: number | null;
-}
-
-async function sizeOf(url: string): Promise<number | null> {
-  try {
-    const response = await fetch(url, { method: 'HEAD' });
-    const size = Number(response.headers.get('content-length'));
-    return response.ok && size > 0 ? size : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
- * Turns an offline plan into concrete downloads — exactly the files and cache
- * keys Transformers.js will look for, plus ONNX Runtime's WASM — with their
- * real sizes, so progress can be shown honestly.
+ * Turns an offline plan into concrete download URLs — exactly the files and
+ * cache keys Transformers.js will look for, plus ONNX Runtime's WASM.
+ * Uses cached configs only when they're cached, so a fully downloaded Loom
+ * makes no network requests here.
  */
-serveWorker<Record<string, never>, ManifestRequest, ManifestFile[], never>({
+serveWorker<Record<string, never>, ManifestRequest, string[], never>({
   async load() {
     return 'cpu';
   },
@@ -40,7 +25,6 @@ serveWorker<Record<string, never>, ManifestRequest, ManifestFile[], never>({
       for (const file of files) urls.add(hubUrl(model, file));
     }
     for (const url of extraUrls) urls.add(url);
-    const result = await Promise.all([...urls].map(async (url) => ({ url, size: await sizeOf(url) })));
-    return { result };
+    return { result: [...urls] };
   },
 });

@@ -1,5 +1,5 @@
 import { WorkerClient } from '../workers/client';
-import type { ManifestFile, ManifestRequest } from './manifest.worker';
+import type { ManifestRequest } from './manifest.worker';
 import { cacheNameFor, type OfflinePlan } from './plan';
 
 export interface Readiness {
@@ -37,9 +37,9 @@ interface BackgroundFetchManager {
 
 const FETCH_ID = 'loom-offline-models';
 
-/** Exact URLs (= cache keys) and sizes for everything in the plan. */
-export async function offlineFiles(plan: OfflinePlan): Promise<ManifestFile[]> {
-  const client = new WorkerClient<Record<string, never>, ManifestRequest, ManifestFile[]>(
+/** Exact URLs (= cache keys) for everything in the plan. */
+export async function offlineUrls(plan: OfflinePlan): Promise<string[]> {
+  const client = new WorkerClient<Record<string, never>, ManifestRequest, string[]>(
     new Worker(new URL('./manifest.worker.ts', import.meta.url), { type: 'module', name: 'loom-manifest' }),
   );
   try {
@@ -50,22 +50,49 @@ export async function offlineFiles(plan: OfflinePlan): Promise<ManifestFile[]> {
   }
 }
 
-/** Which files are already in the browser cache, and how many bytes are still to come. */
-export async function checkReadiness(files: readonly ManifestFile[]): Promise<Readiness> {
+/** Sizes learned from HEAD requests, so repeated checks don't hit the network again. */
+const remoteSizes = new Map<string, number | null>();
+
+async function remoteSize(url: string): Promise<number | null> {
+  if (!remoteSizes.has(url)) {
+    let size: number | null = null;
+    try {
+      const response = await fetch(url, { method: 'HEAD' });
+      const length = Number(response.headers.get('content-length'));
+      if (response.ok && length > 0) size = length;
+    } catch {
+      // Unknown size; progress just won't show a total for it.
+    }
+    remoteSizes.set(url, size);
+  }
+  return remoteSizes.get(url)!;
+}
+
+/**
+ * Which files are already in the browser cache, and how many bytes are still
+ * to come. Cached files are measured from the cache itself; only missing ones
+ * are asked about over the network — so a fully downloaded Loom checks its
+ * readiness without a single request.
+ */
+export async function checkReadiness(urls: readonly string[]): Promise<Readiness> {
   const missing: string[] = [];
   let missingBytes = 0;
   let totalBytes = 0;
   const opened = new Map<string, Cache>();
-  for (const { url, size } of files) {
+  for (const url of urls) {
     const name = cacheNameFor(url);
     if (!opened.has(name)) opened.set(name, await caches.open(name));
-    totalBytes += size ?? 0;
-    if (!(await opened.get(name)!.match(url))) {
+    const cached = await opened.get(name)!.match(url);
+    if (cached) {
+      totalBytes += Number(cached.headers.get('content-length')) || 0;
+    } else {
       missing.push(url);
+      const size = navigator.onLine ? await remoteSize(url) : null;
       missingBytes += size ?? 0;
+      totalBytes += size ?? 0;
     }
   }
-  return { total: files.length, cached: files.length - missing.length, missing, missingBytes, totalBytes };
+  return { total: urls.length, cached: urls.length - missing.length, missing, missingBytes, totalBytes };
 }
 
 async function backgroundFetchManager(): Promise<BackgroundFetchManager | null> {

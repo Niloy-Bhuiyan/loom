@@ -1,8 +1,7 @@
 import { EMBED_MODEL } from '../config/models';
 import type { Settings } from '../config/settings';
 import { markModelsCached } from '../core/model-cache';
-import type { ManifestFile } from './manifest.worker';
-import { canDownloadInBackground, checkReadiness, downloadInBackground, downloadInPage, offlineFiles, resumeBackgroundDownload, type DownloadProgress } from './offline';
+import { canDownloadInBackground, checkReadiness, downloadInBackground, downloadInPage, offlineUrls, resumeBackgroundDownload, type DownloadProgress } from './offline';
 import { offlinePlan, type OfflinePlan } from './plan';
 
 export type OfflineState =
@@ -21,7 +20,7 @@ export type OfflineState =
  */
 export class OfflineManager {
   private plan: OfflinePlan;
-  private files: ManifestFile[] | null = null;
+  private urls: string[] | null = null;
   private state: OfflineState = { kind: 'checking' };
   /** Bytes the current download has to fetch, for progress. */
   private downloadBytes = 0;
@@ -53,7 +52,7 @@ export class OfflineManager {
   /** Download whatever is missing. Resolves when done (or failed). */
   async download(): Promise<void> {
     try {
-      const { missing, missingBytes } = await checkReadiness(await this.resolveFiles());
+      const { missing, missingBytes } = await checkReadiness(await this.resolveUrls());
       if (missing.length === 0) return void (await this.recheck());
       this.downloadBytes = missingBytes;
       const background = await canDownloadInBackground();
@@ -77,7 +76,7 @@ export class OfflineManager {
     const end = Date.now() + timeoutMs;
     try {
       for (;;) {
-        const { cached, total } = await checkReadiness(await this.resolveFiles());
+        const { cached, total } = await checkReadiness(await this.resolveUrls());
         if (cached === total || Date.now() > end) break;
         this.progress({ downloaded: this.downloadBytes || null, storing: true }, true);
         await new Promise((r) => setTimeout(r, 3000));
@@ -90,7 +89,7 @@ export class OfflineManager {
 
   private async recheck(): Promise<OfflineState> {
     try {
-      const { cached, total, missingBytes, totalBytes } = await checkReadiness(await this.resolveFiles());
+      const { cached, total, missingBytes, totalBytes } = await checkReadiness(await this.resolveUrls());
       if (cached === total) {
         // Every model is on disk: skip the fast-start detour and first-run prompt from now on.
         markModelsCached(this.plan.models.map((m) => m.model).filter((m) => m !== EMBED_MODEL));
@@ -104,9 +103,9 @@ export class OfflineManager {
     return this.state;
   }
 
-  private async resolveFiles(): Promise<ManifestFile[]> {
-    this.files ??= await offlineFiles(this.plan);
-    return this.files;
+  private async resolveUrls(): Promise<string[]> {
+    this.urls ??= await offlineUrls(this.plan);
+    return this.urls;
   }
 
   private progress(p: DownloadProgress, background: boolean): void {
