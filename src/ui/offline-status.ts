@@ -29,6 +29,7 @@ export function renderOfflineStatus(container: HTMLElement, state: OfflineState,
         button(state.background ? 'Get ready' : 'Download'),
       );
     case 'downloading': {
+      if (state.storing) return row('download', 'Saving to this device…', 'Download complete — writing it into the browser’s storage');
       const done = state.downloadedBytes
         ? `${formatBytes(state.downloadedBytes)}${state.totalBytes ? ` of ${formatBytes(state.totalBytes)}` : ''}`
         : 'Starting…';

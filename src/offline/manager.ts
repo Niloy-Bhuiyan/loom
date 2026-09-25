@@ -10,7 +10,7 @@ export type OfflineState =
   | { kind: 'ready'; totalBytes: number }
   | { kind: 'missing'; cached: number; total: number; missingBytes: number; background: boolean }
   /** `totalBytes` is what this download has to fetch (0 if unknown). */
-  | { kind: 'downloading'; downloadedBytes: number | null; totalBytes: number; background: boolean }
+  | { kind: 'downloading'; downloadedBytes: number | null; totalBytes: number; background: boolean; storing: boolean }
   | { kind: 'failed'; message: string }
   /** Can't tell (e.g. offline before anything was ever downloaded). */
   | { kind: 'unknown' };
@@ -47,7 +47,7 @@ export class OfflineManager {
       this.set({ kind: 'failed', message: 'The background download didn’t finish.' });
       return this.state;
     }
-    return this.recheck();
+    return resumed === 'done' ? this.waitUntilCached() : this.recheck();
   }
 
   /** Download whatever is missing. Resolves when done (or failed). */
@@ -63,10 +63,29 @@ export class OfflineManager {
       if (result === 'failed') throw new Error('The background download didn’t finish.');
       // No Background Fetch (or it never started): download here; the tab has to stay open.
       if (result === 'stalled') await downloadInPage(missing, (p) => this.progress(p, false));
-      await this.recheck();
+      await this.waitUntilCached();
     } catch (err) {
       this.set({ kind: 'failed', message: err instanceof Error ? err.message : String(err) });
     }
+  }
+
+  /**
+   * After a background download reports success, the service worker may still be
+   * writing gigabytes into the cache. Re-check until everything is there (or give up).
+   */
+  private async waitUntilCached(timeoutMs = 5 * 60_000): Promise<OfflineState> {
+    const end = Date.now() + timeoutMs;
+    try {
+      for (;;) {
+        const { cached, total } = await checkReadiness(await this.resolveFiles());
+        if (cached === total || Date.now() > end) break;
+        this.progress({ downloaded: this.downloadBytes || null, storing: true }, true);
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    } catch {
+      // Fall through to a normal check, which reports what it can.
+    }
+    return this.recheck();
   }
 
   private async recheck(): Promise<OfflineState> {
@@ -91,7 +110,7 @@ export class OfflineManager {
   }
 
   private progress(p: DownloadProgress, background: boolean): void {
-    this.set({ kind: 'downloading', downloadedBytes: p.downloaded, totalBytes: this.downloadBytes, background });
+    this.set({ kind: 'downloading', downloadedBytes: p.downloaded, totalBytes: this.downloadBytes, background, storing: p.storing ?? false });
   }
 
   private set(state: OfflineState): void {

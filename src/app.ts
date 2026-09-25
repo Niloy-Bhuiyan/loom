@@ -245,13 +245,20 @@ export class App {
     loader.showBackground('Starting…', null);
     if (begin) await this.offline.download();
     else await this.offline.refresh();
-    if (this.offline.current.kind === 'ready') location.reload();
+    const state = this.offline.current;
+    if (state.kind === 'ready') location.reload();
+    else if (state.kind !== 'failed') {
+      // Never leave the start-up screen hanging without a way forward.
+      loader.showBackground('Not everything was saved yet. Reload the page to resume — files that arrived are kept.', 0, false);
+    }
   }
 
   private renderOffline(state: OfflineState): void {
     renderOfflineStatus(this.layout.offlineStatus, state, () => void this.offline.download());
     if (!this.bootLoader) return;
-    if (state.kind === 'downloading') {
+    if (state.kind === 'downloading' && state.storing) {
+      this.bootLoader.showBackground('Download complete — saving it to this device…', null, state.background);
+    } else if (state.kind === 'downloading') {
       const { downloadedBytes: done, totalBytes: total } = state;
       const fraction = done && total ? Math.min(1, done / total) : null;
       const detail = done ? `${formatBytes(done)}${total ? ` of ${formatBytes(total)}` : ''} saved` : 'Starting…';

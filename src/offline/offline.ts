@@ -16,6 +16,8 @@ export interface DownloadProgress {
   downloaded: number | null;
   /** Files done out of total (in-page downloads only). */
   files?: { done: number; total: number };
+  /** Everything arrived; it's being written into the browser's storage. */
+  storing?: boolean;
 }
 
 /** Background Fetch isn't in TypeScript's DOM types yet; describe the parts we use. */
@@ -119,6 +121,8 @@ export async function resumeBackgroundDownload(onProgress: (p: DownloadProgress)
  * If nothing arrives in this long, give up on it and remember not to offer it again.
  */
 const STALL_MS = 20_000;
+/** How long to wait for the service worker to finish storing a completed download. */
+const STORE_TIMEOUT_MS = 5 * 60_000;
 const BROKEN_KEY = 'loom.background-fetch-broken';
 
 function watchBackgroundFetch(registration: BackgroundFetchRegistration, onProgress: (p: DownloadProgress) => void): Promise<BackgroundResult> {
@@ -129,8 +133,12 @@ function watchBackgroundFetch(registration: BackgroundFetchRegistration, onProgr
       resolve(result);
     };
     const settle = () => {
-      if (registration.result === 'success') finish('done');
-      else if (registration.result === 'failure') finish('failed');
+      // "success" means the bytes arrived; the service worker may still be copying them
+      // into the caches, so wait for its "ready" message (the caller double-checks the cache).
+      if (registration.result === 'success') {
+        onProgress({ downloaded: registration.downloaded, storing: true });
+        setTimeout(() => finish('done'), STORE_TIMEOUT_MS);
+      } else if (registration.result === 'failure') finish('failed');
     };
     const watchdog = setInterval(() => {
       if (registration.downloaded > 0 || performance.now() - started < STALL_MS) return;
