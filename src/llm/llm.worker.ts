@@ -7,12 +7,12 @@ import {
 import type { ModelProgressEvent } from '../core/progress';
 import { reportCacheStatus } from '../workers/cache-status';
 import { serveWorker } from '../workers/host';
-import { SELF_TEST_FAILED, type LlmConfig, type LlmRequest } from './protocol';
+import { SELF_TEST_FAILED, type LlmConfig, type LlmRequest, type LlmResult } from './protocol';
 
 let generator: TextGenerationPipeline | null = null;
 const stopping = new InterruptableStoppingCriteria();
 
-serveWorker<LlmConfig, LlmRequest, string, string>({
+serveWorker<LlmConfig, LlmRequest, LlmResult, string>({
   async load({ model, dtype, selfTest }, ctx) {
     await reportCacheStatus('text-generation', model, { dtype: dtype as never, device: 'webgpu' }, ctx);
     generator = (await pipeline('text-generation', model, {
@@ -42,12 +42,19 @@ serveWorker<LlmConfig, LlmRequest, string, string>({
     stopping.reset();
 
     let reply = '';
+    let tokens = 0;
+    let firstTokenAt = 0;
+    const started = performance.now();
     const streamer = new TextStreamer(generator.tokenizer, {
       skip_prompt: true,
       skip_special_tokens: true,
       callback_function: (text: string) => {
         reply += text;
         ctx.partial(text);
+      },
+      token_callback_function: () => {
+        tokens++;
+        firstTokenAt ||= performance.now();
       },
     });
 
@@ -59,7 +66,13 @@ serveWorker<LlmConfig, LlmRequest, string, string>({
       streamer,
       stopping_criteria: stopping,
     });
-    return { result: reply.trim() };
+    const ended = performance.now();
+    return {
+      result: {
+        text: reply.trim(),
+        stats: { tokens, firstTokenMs: (firstTokenAt || ended) - started, totalMs: ended - started },
+      },
+    };
   },
 
   interrupt() {

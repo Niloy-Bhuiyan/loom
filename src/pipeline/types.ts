@@ -47,6 +47,18 @@ export interface LanguageModel extends LoadableStage {
   generate(messages: ChatMessage[], onToken: (text: string) => void): Promise<string>;
   /** Stop the in-flight generation as soon as possible. */
   interrupt(): void;
+  /** Measurements from the most recent generate() call, if the implementation reports them. */
+  lastStats?(): GenerationStats | null;
+}
+
+/** How fast a language model produced its last reply. */
+export interface GenerationStats {
+  /** Tokens generated. */
+  tokens: number;
+  /** Prompt processing until the first token appeared. */
+  firstTokenMs: number;
+  /** Whole generation. */
+  totalMs: number;
 }
 
 export interface TextToSpeech extends LoadableStage {

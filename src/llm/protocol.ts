@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../pipeline/types';
+import type { ChatMessage, GenerationStats } from '../pipeline/types';
 
 // Shared between the LLM worker and its main-thread client. Kept separate so the
 // main thread never imports the worker module (and with it Transformers.js).
@@ -13,6 +13,11 @@ export interface LlmConfig {
 export interface LlmRequest {
   messages: ChatMessage[];
   maxNewTokens: number;
+}
+
+export interface LlmResult {
+  text: string;
+  stats: GenerationStats;
 }
 
 /** Thrown by the worker's load() when the self-test fails; the client falls back to 32-bit weights. */

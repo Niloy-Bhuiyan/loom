@@ -1,13 +1,13 @@
 import type { LlmPreset } from '../config/models';
-import type { ChatMessage, LanguageModel, ProgressListener } from '../pipeline/types';
+import type { ChatMessage, GenerationStats, LanguageModel, ProgressListener } from '../pipeline/types';
 import { WorkerClient } from '../workers/client';
-import { SELF_TEST_FAILED, type LlmConfig, type LlmRequest } from './protocol';
+import { SELF_TEST_FAILED, type LlmConfig, type LlmRequest, type LlmResult } from './protocol';
 
 /** Spoken replies should be short; this also bounds latency on slow GPUs. */
 const MAX_NEW_TOKENS = 256;
 
 function createClient() {
-  return new WorkerClient<LlmConfig, LlmRequest, string, string>(
+  return new WorkerClient<LlmConfig, LlmRequest, LlmResult, string>(
     new Worker(new URL('./llm.worker.ts', import.meta.url), { type: 'module', name: 'loom-llm' }),
   );
 }
@@ -15,6 +15,7 @@ function createClient() {
 /** A small instruction-tuned LLM via Transformers.js on WebGPU, in its own worker. */
 export class TransformersLLM implements LanguageModel {
   private client = createClient();
+  private stats: GenerationStats | null = null;
 
   /**
    * @param useF16 whether 16-bit GPU math may be used (shader-f16 present and not known-broken)
@@ -42,8 +43,14 @@ export class TransformersLLM implements LanguageModel {
     }
   }
 
-  generate(messages: ChatMessage[], onToken: (text: string) => void): Promise<string> {
-    return this.client.run({ messages, maxNewTokens: MAX_NEW_TOKENS }, onToken);
+  async generate(messages: ChatMessage[], onToken: (text: string) => void): Promise<string> {
+    const { text, stats } = await this.client.run({ messages, maxNewTokens: MAX_NEW_TOKENS }, onToken);
+    this.stats = stats;
+    return text;
+  }
+
+  lastStats(): GenerationStats | null {
+    return this.stats;
   }
 
   interrupt(): void {
