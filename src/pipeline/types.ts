@@ -28,8 +28,8 @@ export interface LoadableStage {
 }
 
 export interface SpeechToText extends LoadableStage {
-  /** Transcribe mono PCM audio sampled at 16 kHz. */
-  transcribe(audio: Float32Array): Promise<string>;
+  /** Transcribe mono PCM audio sampled at 16 kHz. Aborting skips the work if it hasn't started. */
+  transcribe(audio: Float32Array, signal?: AbortSignal): Promise<string>;
 }
 
 export type ChatRole = 'system' | 'user' | 'assistant';

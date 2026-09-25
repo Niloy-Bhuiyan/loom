@@ -15,8 +15,8 @@ export class WhisperSTT implements SpeechToText {
     await this.client.load({ model: this.preset.model, dtype: this.preset.dtype }, onProgress);
   }
 
-  async transcribe(audio: Float32Array): Promise<string> {
-    return cleanTranscript(await this.client.run(audio));
+  async transcribe(audio: Float32Array, signal?: AbortSignal): Promise<string> {
+    return cleanTranscript(await this.client.run(audio, undefined, signal));
   }
 
   dispose(): void {

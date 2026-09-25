@@ -60,6 +60,8 @@ export class Conversation {
   private continuation: Float32Array | null = null;
   private retriever: Retriever | null = null;
   private systemPrompt = SYSTEM_PROMPT;
+  /** Cancels the current turn's transcription if it is still queued. */
+  private sttAbort: AbortController | null = null;
 
   constructor(
     private stages: Stages,
@@ -101,7 +103,7 @@ export class Conversation {
   /** Say something scripted (a mode's greeting) without asking the model. */
   async greet(text: string): Promise<void> {
     this.interrupt();
-    const turn = ++this.turn;
+    const turn = this.nextTurn();
     this.history.push({ role: 'assistant', content: text });
     this.events.onAssistantStart();
     this.events.onAssistantToken(text);
@@ -132,7 +134,7 @@ export class Conversation {
   /** Stop recording and run the full turn. */
   async stopListening(): Promise<void> {
     if (this.state !== 'listening') return;
-    const turn = ++this.turn;
+    const turn = this.nextTurn();
     this.setState('transcribing');
 
     try {
@@ -154,7 +156,7 @@ export class Conversation {
     if (last && last.turn === this.turn && stillWorking) {
       // Loom hadn't started answering yet, so the user was only pausing mid-thought:
       // withdraw that message and hear it again together with what comes next.
-      this.turn++;
+      this.nextTurn();
       this.stages.llm.interrupt();
       this.stages.tts.stop();
       this.streamed = null;
@@ -178,7 +180,7 @@ export class Conversation {
       audio = concatChunks([this.continuation, audio]);
       this.continuation = null;
     }
-    const turn = ++this.turn;
+    const turn = this.nextTurn();
     this.lastUtterance = { audio, turn, historyIndex: null };
     this.setState('transcribing');
     try {
@@ -190,7 +192,8 @@ export class Conversation {
 
   /** Transcribe, then answer. `quiet` skips the "didn't catch that" notice (background noise in hands-free). */
   private async transcribeAndReply(turn: number, audio: Float32Array, quiet: boolean): Promise<void> {
-    const text = await this.stages.stt.transcribe(audio);
+    this.sttAbort = new AbortController();
+    const text = await this.stages.stt.transcribe(audio, this.sttAbort.signal);
     if (turn !== this.turn) return;
     if (!text) {
       if (!quiet) this.events.onNotice('Sorry, I didn’t catch that. Try again?');
@@ -205,7 +208,7 @@ export class Conversation {
     const trimmed = text.trim();
     if (!trimmed || this.state === 'listening') return;
     this.interrupt();
-    const turn = ++this.turn;
+    const turn = this.nextTurn();
     try {
       await this.reply(turn, trimmed);
     } catch (err) {
@@ -216,7 +219,7 @@ export class Conversation {
   /** Hands-free ended: drop anything in progress, including a half-heard utterance. */
   reset(): void {
     this.interrupt();
-    this.turn++;
+    this.nextTurn();
     this.lastUtterance = null;
     this.continuation = null;
     this.setState('idle');
@@ -225,7 +228,7 @@ export class Conversation {
   /** Stop thinking/speaking immediately. */
   interrupt(): void {
     if (this.state === 'idle' || this.state === 'listening') return;
-    this.turn++;
+    this.nextTurn();
     this.stages.llm.interrupt();
     this.stages.tts.stop();
     // Close out a half-written reply now, so it can't land after the next turn has started.
@@ -277,6 +280,16 @@ export class Conversation {
     say(chunker.flush());
     await this.stages.tts.drain();
     this.finish(turn);
+  }
+
+  /**
+   * Start a new turn: everything from the previous one is now stale. A queued
+   * transcription for it is cancelled, so a newer utterance isn't stuck behind it.
+   */
+  private nextTurn(): number {
+    this.sttAbort?.abort();
+    this.sttAbort = null;
+    return ++this.turn;
   }
 
   private fail(turn: number, err: unknown): void {

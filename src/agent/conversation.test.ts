@@ -185,6 +185,28 @@ describe('Conversation', () => {
       expect(ctx.convo.history.map((m) => m.content)).toEqual(['Hello Loom, what is the capital of France?', 'Hi there. How can I help?']);
     });
 
+    it('cancels the stale transcription when the user carries on talking', async () => {
+      const ctx = setup();
+      const signals: AbortSignal[] = [];
+      vi.mocked(ctx.stt.transcribe).mockImplementation(
+        (_audio, signal) =>
+          new Promise((resolve, reject) => {
+            signals.push(signal!);
+            signal!.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+            if (signals.length > 1) resolve('the whole sentence');
+          }),
+      );
+
+      const first = ctx.convo.submitUtterance(speech());
+      ctx.convo.userStartedSpeaking(); // still transcribing the first part
+      await first;
+      await ctx.convo.submitUtterance(speech());
+
+      expect(signals[0]!.aborted).toBe(true);
+      expect(ctx.log).toContain('user:the whole sentence');
+      expect(ctx.log.filter((l) => l.startsWith('error'))).toEqual([]);
+    });
+
     it('treats talking while Loom is speaking as a real interruption', async () => {
       const ctx = setup();
       let finish: (reply: string) => void = () => {};
