@@ -22,6 +22,7 @@ interface BackgroundFetchRegistration extends EventTarget {
   downloadTotal: number;
   result: '' | 'success' | 'failure';
   failureReason: string;
+  abort(): Promise<boolean>;
 }
 interface BackgroundFetchManager {
   fetch(id: string, requests: string[], options?: { title?: string; icons?: { src: string; sizes: string; type: string }[]; downloadTotal?: number }): Promise<BackgroundFetchRegistration>;
@@ -64,15 +65,23 @@ async function backgroundFetchManager(): Promise<BackgroundFetchManager | null> 
 
 /** True where downloads can continue after the tab is closed (Chromium with the service worker active). */
 export async function canDownloadInBackground(): Promise<boolean> {
+  try {
+    if (localStorage.getItem(BROKEN_KEY)) return false;
+  } catch {
+    // Storage unavailable: just ask the browser.
+  }
   return (await backgroundFetchManager()) !== null;
 }
+
+/** 'stalled': the browser accepted the download but never started it. */
+export type BackgroundResult = 'done' | 'failed' | 'stalled';
 
 /**
  * Start (or re-attach to) a Background Fetch. The browser shows its own
  * progress UI and keeps going if the tab is closed; the service worker files
  * everything into the caches when it finishes.
  */
-export async function downloadInBackground(urls: string[], onProgress: (p: DownloadProgress) => void): Promise<'done' | 'failed'> {
+export async function downloadInBackground(urls: string[], onProgress: (p: DownloadProgress) => void): Promise<BackgroundResult> {
   const manager = await backgroundFetchManager();
   if (!manager) throw new Error('Background downloads are not supported in this browser');
   const registration =
@@ -90,17 +99,41 @@ export async function hasBackgroundDownload(): Promise<boolean> {
 }
 
 /** If a background download is running (e.g. started before a reload), follow it. */
-export async function resumeBackgroundDownload(onProgress: (p: DownloadProgress) => void): Promise<'done' | 'failed' | null> {
+export async function resumeBackgroundDownload(onProgress: (p: DownloadProgress) => void): Promise<BackgroundResult | null> {
   const registration = await (await backgroundFetchManager())?.get(FETCH_ID);
   return registration ? watchBackgroundFetch(registration, onProgress) : null;
 }
 
-function watchBackgroundFetch(registration: BackgroundFetchRegistration, onProgress: (p: DownloadProgress) => void): Promise<'done' | 'failed'> {
+/**
+ * Some Chromium-based browsers expose the Background Fetch API but never
+ * download anything (seen in an Electron-based browser: stuck at 0 bytes).
+ * If nothing arrives in this long, give up on it and remember not to offer it again.
+ */
+const STALL_MS = 20_000;
+const BROKEN_KEY = 'loom.background-fetch-broken';
+
+function watchBackgroundFetch(registration: BackgroundFetchRegistration, onProgress: (p: DownloadProgress) => void): Promise<BackgroundResult> {
   return new Promise((resolve) => {
-    const settle = () => {
-      if (registration.result === 'success') resolve('done');
-      else if (registration.result === 'failure') resolve('failed');
+    const started = performance.now();
+    const finish = (result: BackgroundResult) => {
+      clearInterval(watchdog);
+      resolve(result);
     };
+    const settle = () => {
+      if (registration.result === 'success') finish('done');
+      else if (registration.result === 'failure') finish('failed');
+    };
+    const watchdog = setInterval(() => {
+      if (registration.downloaded > 0 || performance.now() - started < STALL_MS) return;
+      void registration.abort();
+      try {
+        localStorage.setItem(BROKEN_KEY, '1');
+      } catch {
+        // Only means we might offer it again next time.
+      }
+      finish('stalled');
+    }, 2000);
+
     onProgress({ downloaded: registration.downloaded });
     registration.addEventListener('progress', () => {
       onProgress({ downloaded: registration.downloaded });
@@ -108,8 +141,8 @@ function watchBackgroundFetch(registration: BackgroundFetchRegistration, onProgr
     });
     // The service worker announces when it has finished filing responses into the caches.
     navigator.serviceWorker.addEventListener('message', (e: MessageEvent<{ type?: string }>) => {
-      if (e.data?.type === 'loom-offline-ready') resolve('done');
-      if (e.data?.type === 'loom-offline-failed') resolve('failed');
+      if (e.data?.type === 'loom-offline-ready') finish('done');
+      if (e.data?.type === 'loom-offline-failed') finish('failed');
     });
     settle();
   });

@@ -62,12 +62,10 @@ export class OfflineManager {
     const background = await canDownloadInBackground();
     this.progress({ downloaded: 0 }, background);
     try {
-      if (background) {
-        const result = await downloadInBackground(missing, (p) => this.progress(p, true));
-        if (result === 'failed') throw new Error('The background download didn’t finish.');
-      } else {
-        await downloadInPage(missing, (p) => this.progress(p, false));
-      }
+      const result = background ? await downloadInBackground(missing, (p) => this.progress(p, true)) : 'stalled';
+      if (result === 'failed') throw new Error('The background download didn’t finish.');
+      // No Background Fetch (or it never started): download here; the tab has to stay open.
+      if (result === 'stalled') await downloadInPage(missing, (p) => this.progress(p, false));
       await this.recheck();
     } catch (err) {
       this.set({ kind: 'failed', message: err instanceof Error ? err.message : String(err) });
