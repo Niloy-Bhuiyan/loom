@@ -113,11 +113,13 @@ export class LoaderPanel {
   }
 
   /** A background download is running: the tab can be closed. */
-  showBackground(detail: string, fraction: number | null): void {
-    this.heading.textContent = 'Downloading in the background';
-    this.intro.textContent =
-      'You can close this tab — your browser keeps downloading and shows progress in its downloads bar. ' +
-      'Come back any time: once everything is saved, Loom starts straight from this device, even offline.';
+  showBackground(detail: string, fraction: number | null, background = true): void {
+    this.heading.textContent = background ? 'Downloading in the background' : 'Downloading for offline use';
+    this.intro.textContent = background
+      ? 'You can close this tab — your browser keeps downloading and shows progress in its downloads bar. ' +
+        'Come back any time: once everything is saved, Loom starts straight from this device, even offline.'
+      : 'This browser can’t download with the tab closed, so keep this tab open until it finishes. ' +
+        'Once everything is saved, Loom starts straight from this device, even offline.';
     this.list.hidden = true;
     const fill = h('span');
     fill.style.width = `${Math.round((fraction ?? 0) * 100)}%`;
