@@ -29,6 +29,9 @@ import { DEFAULT_MODE, findMode, type Mode } from './config/modes';
 import { renderChatList } from './ui/chat-list';
 import { LiveFace } from './ui/face';
 import { renderChatTitle, renderModePicker, renderSuggestions } from './ui/modes';
+import { OfflineManager, type OfflineState } from './offline/manager';
+import { canDownloadInBackground, hasBackgroundDownload } from './offline/offline';
+import { renderOfflineStatus } from './ui/offline-status';
 
 const MAX_DOWNLOAD_RETRIES = 2;
 
@@ -79,6 +82,10 @@ export class App {
     onRemove: (id) => this.removeDocument(id),
   });
   private ready = false;
+  /** Makes sure this device can run Loom with the wifi off. */
+  private offline: OfflineManager;
+  /** The start-up panel while it's showing a background download. */
+  private bootLoader: LoaderPanel | null = null;
 
   constructor(
     private host: HTMLElement,
@@ -93,6 +100,7 @@ export class App {
     this.brain = planBrain(settings.llm, (model) => areModelsCached([model]));
     this.llm = this.createLlm(this.brain.initial);
     this.tts = createTts(settings);
+    this.offline = new OfflineManager(settings, caps.shaderF16, (state) => this.renderOffline(state));
 
     this.conversation = new Conversation({ stt: this.stt, llm: this.llm, tts: this.tts }, this.recorder, {
       onState: (s) => this.renderState(s),
@@ -145,7 +153,7 @@ export class App {
     window.addEventListener('offline', refresh);
     refresh();
     this.waveform.start();
-    this.boot();
+    void this.boot();
   }
 
   // ───────────────────────── Model loading ─────────────────────────
@@ -183,26 +191,54 @@ export class App {
     return ids;
   }
 
-  private boot(): void {
+  private async boot(): Promise<void> {
     const stages = this.stageInfo();
     const gpu = this.caps.adapterName ? `GPU: ${this.caps.adapterName}` : 'GPU: WebGPU';
     const loader = new LoaderPanel(stages, `${gpu} · ${this.caps.shaderF16 ? '16-bit shaders ✓' : '32-bit shaders'} · models from huggingface.co`);
     this.host.append(loader.el);
 
     const start = (fromCache: boolean) => {
+      this.bootLoader = null;
       loader.showLoading(fromCache);
       void this.loadModels(loader);
     };
 
-    if (areModelsCached(this.modelIds())) {
-      start(true);
-    } else {
-      const total = stages.reduce((n, s) => n + s.approxMB, 0);
-      const later = this.brain.upgradeTo;
-      const note = later
-        ? `To get you talking sooner, Loom starts with a light brain and quietly upgrades to ${later.label} (~${formatBytes(later.approxMB * 1024 * 1024)}) in the background.`
-        : undefined;
-      loader.askToDownload(total, () => start(false), () => this.openSettings(), note);
+    if (areModelsCached(this.modelIds())) return start(true);
+    // Came back while a background download is still going: show it instead of asking again.
+    if (await hasBackgroundDownload().catch(() => false)) return this.followBackgroundDownload(loader, false);
+
+    const total = stages.reduce((n, s) => n + s.approxMB, 0);
+    const later = this.brain.upgradeTo;
+    const note = later
+      ? `To get you talking sooner, Loom starts with a light brain and quietly upgrades to ${later.label} (~${formatBytes(later.approxMB * 1024 * 1024)}) in the background.`
+      : undefined;
+    const background = await canDownloadInBackground().catch(() => false);
+    loader.askToDownload(total, () => start(false), () => this.openSettings(), note, background ? () => void this.followBackgroundDownload(loader, true) : undefined);
+  }
+
+  /**
+   * Download everything (chosen brain included) via Background Fetch while
+   * showing progress in the loader. When it's all on disk, reload so the
+   * chosen models load directly from cache.
+   */
+  private async followBackgroundDownload(loader: LoaderPanel, begin: boolean): Promise<void> {
+    this.bootLoader = loader;
+    loader.showBackground('Starting…', null);
+    if (begin) await this.offline.download();
+    else await this.offline.refresh();
+    if (this.offline.current.kind === 'ready') location.reload();
+  }
+
+  private renderOffline(state: OfflineState): void {
+    renderOfflineStatus(this.layout.offlineStatus, state, () => void this.offline.download());
+    if (!this.bootLoader) return;
+    if (state.kind === 'downloading') {
+      const total = state.approxMB * 1024 * 1024;
+      const fraction = state.downloadedBytes ? Math.min(0.99, state.downloadedBytes / total) : null;
+      const detail = state.downloadedBytes ? `${formatBytes(state.downloadedBytes)} of ≈${formatBytes(total)} saved` : 'Starting…';
+      this.bootLoader.showBackground(detail, fraction);
+    } else if (state.kind === 'failed') {
+      this.bootLoader.showBackground(`${state.message} Reload the page to resume — files that arrived are kept.`, 0);
     }
   }
 
@@ -273,7 +309,9 @@ export class App {
     this.renderModes();
     renderConnectivity(this.layout, navigator.onLine, true);
     this.renderState('idle');
+    // Check offline readiness once nothing else is downloading (after an upgrade, see swapBrainIfIdle).
     if (this.brain.upgradeTo) void this.startBrainUpgrade(this.brain.upgradeTo);
+    else void this.offline.refresh();
   }
 
   private async startBrainUpgrade(target: LlmPreset): Promise<void> {
@@ -300,6 +338,7 @@ export class App {
       onError: (err) => {
         el.hidden = true;
         console.warn('[loom] brain upgrade failed', err);
+        void this.offline.refresh();
         const friendly = toFriendlyError(err);
         this.transcript.addNotice(
           friendly.kind === 'out-of-memory'
@@ -319,7 +358,8 @@ export class App {
     this.conversation.setLlm(this.llm);
     old.dispose();
     this.layout.upgrade.el.hidden = true;
-    this.transcript.addNotice(`🧠 Brain upgraded — now using ${this.brain.upgradeTo?.label ?? 'the bigger model'}.`);
+    this.transcript.addNotice(`Brain upgraded — now using ${this.brain.upgradeTo?.label ?? 'the bigger model'}.`);
+    void this.offline.refresh();
   }
 
   // ───────────────────────── Interaction ─────────────────────────

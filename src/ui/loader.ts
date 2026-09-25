@@ -78,39 +78,56 @@ export class LoaderPanel {
   private intro: HTMLElement;
   private actions: HTMLElement;
   private foot: HTMLElement;
+  private list: HTMLElement;
 
   constructor(stages: StageInfo[], footnote: string) {
     this.heading = h('h2', {}, 'Set up Loom on this device');
     this.intro = h('p');
     this.actions = h('div', { class: 'card-actions' });
     this.foot = h('p', { class: 'loader-foot' }, footnote);
-    const list = h('ul', { class: 'stages' });
+    this.list = h('ul', { class: 'stages' });
     for (const s of stages) {
       const row = new StageRow(s);
       this.rows.set(s.key, row);
-      list.append(row.el);
+      this.list.append(row.el);
     }
     this.el = h(
       'div',
       { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'loader-title' },
-      h('div', { class: 'card' }, this.heading, this.intro, list, this.actions, this.foot),
+      h('div', { class: 'card' }, this.heading, this.intro, this.list, this.actions, this.foot),
     );
     this.heading.id = 'loader-title';
   }
 
-  /** Ask before a large first download. */
-  askToDownload(totalMB: number, onStart: () => void, onSettings: () => void, note?: string): void {
+  /** Ask before a large first download. `onBackground` is offered where downloads can outlive the tab. */
+  askToDownload(totalMB: number, onStart: () => void, onSettings: () => void, note?: string, onBackground?: () => void): void {
     this.intro.textContent =
       `Loom runs three AI models directly on your GPU. The first visit downloads about ${formatBytes(totalMB * 1024 * 1024)} ` +
       'from Hugging Face; after that they are cached in your browser, so Loom starts in seconds and works with no internet at all.' +
       (note ? ` ${note}` : '');
     this.actions.replaceChildren(
       h('button', { class: 'btn btn-primary', onclick: onStart }, 'Download & start'),
+      onBackground ? h('button', { class: 'btn', onclick: onBackground }, icon('download'), 'Download in the background') : '',
       h('button', { class: 'btn', onclick: onSettings }, 'Choose smaller models'),
     );
   }
 
+  /** A background download is running: the tab can be closed. */
+  showBackground(detail: string, fraction: number | null): void {
+    this.heading.textContent = 'Downloading in the background';
+    this.intro.textContent =
+      'You can close this tab — your browser keeps downloading and shows progress in its downloads bar. ' +
+      'Come back any time: once everything is saved, Loom starts straight from this device, even offline.';
+    this.list.hidden = true;
+    const fill = h('span');
+    fill.style.width = `${Math.round((fraction ?? 0) * 100)}%`;
+    this.actions.replaceChildren(
+      h('div', { class: 'bg-progress' }, h('div', { class: fraction === null ? 'bar indeterminate' : 'bar' }, fill), h('p', { class: 'stage-phase' }, detail)),
+    );
+  }
+
   showLoading(fromCache: boolean): void {
+    this.list.hidden = false;
     this.heading.textContent = fromCache ? 'Starting Loom' : 'Downloading models';
     this.intro.textContent = fromCache
       ? 'Loading models from your browser cache and warming up the GPU. Anything the browser has evicted is downloaded again.'
