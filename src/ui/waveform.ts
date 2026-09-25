@@ -8,19 +8,17 @@ export interface WaveSources {
   output(): number | null;
 }
 
-const BARS = 72;
-const COLORS: Record<WaveMode, string> = {
-  idle: '124, 240, 197',
-  standby: '124, 240, 197',
-  listening: '255, 122, 138',
-  thinking: '167, 139, 250',
-  speaking: '167, 139, 250',
-};
+const BARS = 64;
 
-/** A radial audio visualiser drawn around the talk button. */
+/**
+ * A radial audio visualiser drawn around the talk button. Its colour comes
+ * from the canvas's CSS `color`, so it follows the theme and state styles.
+ */
 export class Waveform {
   private ctx: CanvasRenderingContext2D;
   private mode: WaveMode = 'idle';
+  /** "r, g, b" of the canvas's current CSS colour. */
+  private rgb = '17, 17, 16';
   private levels = new Float32Array(BARS);
   private freq = new Uint8Array(512);
   private raf = 0;
@@ -35,9 +33,17 @@ export class Waveform {
 
   setMode(mode: WaveMode): void {
     this.mode = mode;
+    this.readColor();
+  }
+
+  private readColor(): void {
+    const match = /(\d+),\s*(\d+),\s*(\d+)/.exec(getComputedStyle(this.canvas).color);
+    if (match) this.rgb = `${match[1]}, ${match[2]}, ${match[3]}`;
   }
 
   start(): void {
+    this.readColor();
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.readColor());
     const frame = (t: number) => {
       this.draw(t / 1000);
       this.raf = requestAnimationFrame(frame);
@@ -111,10 +117,10 @@ export class Waveform {
     const cy = hgt / 2;
     const inner = this.button.offsetWidth / 2 + 7;
     const maxLen = Math.max(6, hgt / 2 - inner - 2);
-    const color = COLORS[this.mode];
+    const color = this.rgb;
 
     ctx.lineCap = 'round';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2;
     for (let i = 0; i < BARS; i++) {
       // Rise fast, fall slowly — looks like a VU meter.
       const current = this.levels[i]!;
@@ -126,7 +132,7 @@ export class Waveform {
       const len = 2 + level * maxLen;
       const cos = Math.cos(angle);
       const sin = Math.sin(angle);
-      ctx.strokeStyle = `rgba(${color}, ${0.25 + level * 0.75})`;
+      ctx.strokeStyle = `rgba(${color}, ${0.12 + level * 0.8})`;
       ctx.beginPath();
       ctx.moveTo(cx + cos * inner, cy + sin * inner);
       ctx.lineTo(cx + cos * (inner + len), cy + sin * (inner + len));

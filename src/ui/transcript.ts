@@ -1,17 +1,25 @@
-import logoUrl from '../assets/logo.svg';
 import type { ChatMessage } from '../pipeline/types';
 import { h } from './dom';
+import { faceSvg } from './face';
 
 /** The scrolling conversation log. Model and user text is only ever set via textContent. */
 export class Transcript {
   readonly el: HTMLElement;
+  private thread: HTMLElement;
   private empty: HTMLElement;
   private streaming: { row: HTMLElement; bubble: HTMLElement } | null = null;
   private lastUser: HTMLElement | null = null;
+  /** Colour of Loom's face next to its replies (follows the current mode). */
+  private avatarColor = 'var(--ink)';
 
   constructor(empty: HTMLElement) {
     this.empty = empty;
-    this.el = h('section', { class: 'transcript', 'aria-live': 'polite', 'aria-label': 'Conversation' }, empty);
+    this.thread = h('div', { class: 'thread' }, empty);
+    this.el = h('section', { class: 'transcript', 'aria-live': 'polite', 'aria-label': 'Conversation' }, this.thread);
+  }
+
+  setAvatarColor(color: string): void {
+    this.avatarColor = color;
   }
 
   addUser(text: string): void {
@@ -31,7 +39,7 @@ export class Transcript {
   startAssistant(): void {
     this.endAssistant(false);
     const bubble = h('div', { class: 'bubble' });
-    const row = h('div', { class: 'msg msg-ai thinking' }, h('img', { class: 'avatar', src: logoUrl, alt: 'Loom' }), bubble);
+    const row = h('div', { class: 'msg msg-ai thinking' }, h('span', { class: 'avatar' }, faceSvg(this.avatarColor, 28)), bubble);
     this.streaming = { row, bubble };
     this.append(row);
   }
@@ -58,7 +66,7 @@ export class Transcript {
   clear(): void {
     this.streaming = null;
     this.lastUser = null;
-    this.el.replaceChildren(this.empty);
+    this.thread.replaceChildren(this.empty);
   }
 
   /** Show a saved conversation. */
@@ -80,7 +88,7 @@ export class Transcript {
 
   private append(node: HTMLElement): void {
     this.empty.remove();
-    this.el.append(node);
+    this.thread.append(node);
     this.scroll();
   }
 
