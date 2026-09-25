@@ -26,8 +26,9 @@ import { DocumentsUi } from './ui/documents';
 import { systemPromptFor } from './agent/prompt';
 import { ChatStore, titleFor, type SavedChat } from './chats/store';
 import { DEFAULT_MODE, findMode, type Mode } from './config/modes';
-import { openChatsDrawer } from './ui/chats-drawer';
-import { renderModePicker, renderSuggestions } from './ui/modes';
+import { renderChatList } from './ui/chat-list';
+import { LiveFace } from './ui/face';
+import { renderChatTitle, renderModePicker, renderSuggestions } from './ui/modes';
 
 const MAX_DOWNLOAD_RETRIES = 2;
 
@@ -66,6 +67,8 @@ export class App {
   private conversation: Conversation;
   private handsFree: HandsFree;
   private waveform: Waveform;
+  /** Loom's animated face inside the voice orb; bobs with its voice (a gentle pulse if the engine can't report levels). */
+  private face = new LiveFace(() => this.tts.level?.() ?? 0.2 + 0.15 * Math.sin(performance.now() / 110));
   private chats = new ChatStore();
   /** The saved chat being continued; created on the first thing the user says. */
   private currentChat: SavedChat | null = null;
@@ -131,9 +134,12 @@ export class App {
     this.layout.upgrade.el.after(this.docsUi.strip);
     this.layout.typeForm.prepend(this.docsUi.attachButton);
     this.docsUi.mount(this.layout.root);
+    this.layout.talk.prepend(this.face.el);
+    this.face.start();
     this.bindControls();
     this.renderModeSwitch();
     this.renderModes();
+    void this.refreshChats();
     const refresh = () => renderConnectivity(this.layout, navigator.onLine, this.ready);
     window.addEventListener('online', refresh);
     window.addEventListener('offline', refresh);
@@ -344,8 +350,9 @@ export class App {
       void this.conversation.sendText(text);
     });
 
-    this.layout.chatsButton.addEventListener('click', () => void this.openChats());
-    this.layout.modePill.addEventListener('click', () => void this.openChats());
+    this.layout.newChatButton.addEventListener('click', () => this.startNewChat());
+    this.layout.menuButton.addEventListener('click', () => this.setSidebarOpen(this.layout.root.dataset.sidebar !== 'open'));
+    this.layout.scrim.addEventListener('click', () => this.setSidebarOpen(false));
     this.layout.settingsButton.addEventListener('click', () => this.openSettings());
   }
 
@@ -382,7 +389,8 @@ export class App {
     const display: DisplayState = live && state === 'idle' ? 'standby' : state;
 
     talk.dataset.state = display;
-    talk.replaceChildren(icon(live || (!handsFree && state === 'listening') ? 'stop' : 'mic'));
+    this.face.setMood(display === 'transcribing' ? 'thinking' : display);
+    this.layout.talkBadge.replaceChildren(icon(live || (!handsFree && state === 'listening') ? 'stop' : 'mic'));
     talk.setAttribute(
       'aria-label',
       live ? 'End hands-free conversation' : handsFree ? 'Start hands-free conversation' : state === 'listening' ? 'Stop and send' : 'Hold to talk',
@@ -432,7 +440,8 @@ export class App {
   private renderModes(): void {
     renderModePicker(this.layout.modePicker, this.mode, (mode) => void this.pickMode(mode));
     renderSuggestions(this.layout.chipsBox, this.mode, this.ready, (text) => void this.conversation.sendText(text));
-    this.layout.modePill.textContent = this.mode.id === DEFAULT_MODE ? '' : `${this.mode.emoji} ${this.mode.label}`;
+    renderChatTitle(this.layout.chatTitle, this.mode);
+    this.transcript.setAvatarColor(this.mode.color);
   }
 
   private setMode(mode: Mode): void {
@@ -452,6 +461,8 @@ export class App {
     this.conversation.load([]);
     this.transcript.clear();
     this.renderModes();
+    this.setSidebarOpen(false);
+    void this.refreshChats();
   }
 
   private async openChat(id: string): Promise<void> {
@@ -461,6 +472,28 @@ export class App {
     this.setMode(findMode(chat.mode));
     this.conversation.load(chat.messages);
     this.transcript.showHistory(chat.messages);
+    this.setSidebarOpen(false);
+    void this.refreshChats();
+  }
+
+  private async deleteChat(id: string): Promise<void> {
+    await this.chats.delete(id).catch(() => {});
+    if (this.currentChat?.id === id) this.startNewChat();
+    else void this.refreshChats();
+  }
+
+  private async refreshChats(): Promise<void> {
+    const chats = await this.chats.list().catch(() => []);
+    renderChatList(this.layout.chatList, chats, this.currentChat?.id ?? null, {
+      onOpen: (id) => void this.openChat(id),
+      onDelete: (id) => void this.deleteChat(id),
+    });
+  }
+
+  /** On small screens the sidebar slides over the conversation. */
+  private setSidebarOpen(open: boolean): void {
+    this.layout.root.dataset.sidebar = open ? 'open' : 'closed';
+    this.layout.menuButton.setAttribute('aria-expanded', String(open));
   }
 
   /** Save the conversation on this device once the user has said something. */
@@ -471,25 +504,10 @@ export class App {
     this.currentChat ??= { id: crypto.randomUUID(), title: '', mode: this.mode.id, messages: [], createdAt: now, updatedAt: now };
     Object.assign(this.currentChat, { messages, title: titleFor(messages), mode: this.mode.id, updatedAt: now });
     // IndexedDB can be unavailable (e.g. some private windows); chats then simply aren't kept.
-    this.chats.save({ ...this.currentChat }).catch((err: unknown) => console.warn('[loom] could not save chat', err));
-  }
-
-  private async openChats(): Promise<void> {
-    const chats = await this.chats.list().catch(() => []);
-    openChatsDrawer({
-      chats,
-      currentId: this.currentChat?.id ?? null,
-      onNew: () => this.startNewChat(),
-      onOpen: (id) => void this.openChat(id),
-      onDelete: (id) => {
-        void this.chats.delete(id);
-        if (this.currentChat?.id === id) this.startNewChat();
-      },
-      onDeleteAll: () => {
-        void this.chats.clear();
-        this.startNewChat();
-      },
-    });
+    this.chats
+      .save({ ...this.currentChat })
+      .then(() => this.refreshChats())
+      .catch((err: unknown) => console.warn('[loom] could not save chat', err));
   }
 
   // ───────────────────────── Documents ─────────────────────────

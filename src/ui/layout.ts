@@ -1,119 +1,172 @@
-import logoUrl from '../assets/logo.svg';
 import type { TalkMode } from '../config/settings';
 import { h } from './dom';
+import { faceSvg } from './face';
 import { icon } from './icons';
 import { installButton } from './install';
 
 export interface Layout {
   root: HTMLElement;
+  /** Saved chats list in the sidebar. */
+  chatList: HTMLElement;
+  newChatButton: HTMLButtonElement;
+  /** Opens the sidebar on small screens. */
+  menuButton: HTMLButtonElement;
+  scrim: HTMLElement;
+  /** "100% local" / "Offline" indicator. */
   badge: HTMLElement;
-  callout: HTMLElement;
+  /** The "Airplane Mode Test" announcement above the headline. */
+  announce: HTMLElement;
   empty: HTMLElement;
   /** Mode cards in the welcome screen. */
   modePicker: HTMLElement;
   /** Suggestion chips for the current mode. */
   chipsBox: HTMLElement;
-  chatsButton: HTMLButtonElement;
-  /** Shows the current mode in the top bar. */
-  modePill: HTMLButtonElement;
+  /** Current mode shown in the top bar. */
+  chatTitle: HTMLElement;
   stage: HTMLElement;
+  /** The voice orb button (hosts Loom's face). */
   talk: HTMLButtonElement;
+  talkBadge: HTMLElement;
   wave: HTMLCanvasElement;
   status: HTMLElement;
   typeForm: HTMLFormElement;
-  modeButtons: Record<TalkMode, HTMLButtonElement>;
-  upgrade: { el: HTMLElement; text: HTMLElement; fill: HTMLElement };
   typeInput: HTMLInputElement;
   settingsButton: HTMLButtonElement;
+  modeButtons: Record<TalkMode, HTMLButtonElement>;
+  upgrade: { el: HTMLElement; text: HTMLElement; fill: HTMLElement };
 }
 
 export function buildLayout(): Layout {
+  // ── Sidebar ──
+  const newChatButton = h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'New chat', title: 'New chat' }, icon('plus'));
+  const chatList = h('nav', { class: 'chat-list', 'aria-label': 'Your chats' });
+  const settingsButton = h('button', { type: 'button', class: 'side-link' }, icon('settings'), h('span', {}, 'Models & voice'));
+  const sidebar = h(
+    'aside',
+    { class: 'sidebar', id: 'sidebar' },
+    h('div', { class: 'sidebar-head' }, h('div', { class: 'brand' }, faceSvg('var(--ink)', 26), h('span', {}, 'Loom')), newChatButton),
+    h('p', { class: 'side-label' }, 'Chats'),
+    chatList,
+    h('div', { class: 'sidebar-foot' }, settingsButton, h('p', { class: 'side-note' }, icon('shield'), 'Chats are saved on this device only.')),
+  );
+  const scrim = h('div', { class: 'scrim', 'aria-hidden': 'true' });
+
+  // ── Top bar ──
+  const menuButton = h('button', { type: 'button', class: 'icon-btn menu-btn', 'aria-label': 'Open chats', 'aria-controls': 'sidebar', 'aria-expanded': 'false' }, icon('menu'));
+  const chatTitle = h('div', { class: 'chat-title' });
   const badge = h('span', { class: 'local-badge', 'data-online': 'true' });
-  const settingsButton = h('button', { class: 'icon-btn', 'aria-label': 'Models and voice settings', title: 'Models & voice' }, icon('settings'));
+  const topbar = h('header', { class: 'topbar' }, menuButton, chatTitle, h('div', { class: 'topbar-right' }, installButton(), badge));
 
-  const callout = h('section', { class: 'callout', 'aria-live': 'polite' });
-
+  // ── Welcome screen ──
+  const announce = h('p', { class: 'announce' });
   const modePicker = h('div', { class: 'mode-picker', role: 'radiogroup', 'aria-label': 'What would you like to do?' });
   const chipsBox = h('div', { class: 'chips' });
   const empty = h(
     'div',
     { class: 'empty' },
-    h('h1', {}, 'Talk to an AI with ', h('em', {}, 'your wifi off.')),
+    announce,
+    h('h1', {}, 'Meet ', faceSvg('var(--ink)', 56), ' Loom'),
     h(
       'p',
-      {},
-      'Speech recognition, a language model and a neural voice all run on your GPU, right here in this tab. ' +
-        'No server, no API keys — nothing you say ever leaves your device. Drop in a PDF to talk about it privately.',
+      { class: 'lede' },
+      'A voice assistant that runs entirely on your device. No servers, no API keys — talk to it with your wifi off, or drop in a PDF and ask about it.',
     ),
     modePicker,
     chipsBox,
   );
-  const chatsButton = h('button', { class: 'icon-btn', 'aria-label': 'Your chats', title: 'Your chats' }, icon('menu'));
-  const modePill = h('button', { type: 'button', class: 'mode-pill', title: 'Your chats' });
 
-  const talk = h('button', { class: 'talk', 'data-state': 'idle', 'aria-label': 'Hold to talk', disabled: true }, icon('mic'));
+  // ── Background upgrade progress ──
+  const upgradeText = h('span', { class: 'upgrade-text' });
+  const upgradeFill = h('span');
+  const upgradeEl = h(
+    'div',
+    { class: 'upgrade', hidden: true, role: 'status' },
+    icon('brain'),
+    h('div', { class: 'upgrade-body' }, upgradeText, h('div', { class: 'bar' }, upgradeFill)),
+  );
+  const stage = h('main', { class: 'stage' }, upgradeEl);
+
+  // ── Voice dock + composer ──
+  const talkBadge = h('span', { class: 'talk-badge', 'aria-hidden': 'true' }, icon('mic'));
+  const talk = h('button', { type: 'button', class: 'talk', 'data-state': 'idle', 'aria-label': 'Start talking', disabled: true }, talkBadge);
   const wave = h('canvas', { class: 'wave', 'aria-hidden': 'true' });
   const status = h('p', { class: 'status', 'aria-live': 'polite' }, 'Loading models…');
-  const typeInput = h('input', { type: 'text', placeholder: 'or type a message…', 'aria-label': 'Type a message', autocomplete: 'off', disabled: true });
-  const typeForm = h('form', { class: 'type-form' }, typeInput, h('button', { type: 'submit' }, 'Send'));
   const modeButtons: Record<TalkMode, HTMLButtonElement> = {
     'hands-free': h('button', { type: 'button', role: 'radio', 'aria-checked': 'false' }, 'Hands-free'),
     push: h('button', { type: 'button', role: 'radio', 'aria-checked': 'false' }, 'Push to talk'),
   };
   const modeSwitch = h('div', { class: 'mode-switch', role: 'radiogroup', 'aria-label': 'How to talk' }, modeButtons['hands-free'], modeButtons.push);
 
-  const upgradeText = h('span', { class: 'upgrade-text' });
-  const upgradeFill = h('span');
-  const upgradeEl = h(
-    'div',
-    { class: 'upgrade', hidden: true, role: 'status' },
-    h('span', { class: 'upgrade-icon' }, icon('brain')),
-    h('div', { class: 'upgrade-body' }, upgradeText, h('div', { class: 'bar' }, upgradeFill)),
+  const typeInput = h('input', { type: 'text', placeholder: 'Message Loom…', 'aria-label': 'Message Loom', autocomplete: 'off', disabled: true });
+  const typeForm = h(
+    'form',
+    { class: 'composer' },
+    typeInput,
+    h('button', { type: 'submit', class: 'send-btn', 'aria-label': 'Send message' }, icon('arrowUp')),
   );
 
-  const stage = h('main', { class: 'stage' }, callout, upgradeEl);
-
-  const root = h(
-    'div',
-    { class: 'app' },
+  // One row: the voice orb, then status + talk-mode switch above the composer.
+  const dock = h(
+    'footer',
+    { class: 'dock' },
     h(
-      'header',
-      { class: 'topbar' },
-      h('div', { class: 'brand' }, chatsButton, h('img', { src: logoUrl, alt: '' }), 'Loom', modePill),
-      h('div', { class: 'topbar-right' }, installButton(), badge, settingsButton),
+      'div',
+      { class: 'dock-inner' },
+      h('div', { class: 'orb' }, wave, talk),
+      h('div', { class: 'dock-main' }, h('div', { class: 'voice-side' }, status, modeSwitch), typeForm),
     ),
-    stage,
-    h('footer', { class: 'dock' }, modeSwitch, h('div', { class: 'talk-wrap' }, wave, talk), status, typeForm),
   );
 
-  return { root, badge, callout, empty, modePicker, chipsBox, chatsButton, modePill, stage, talk, wave, status, typeForm, typeInput, settingsButton, modeButtons, upgrade: { el: upgradeEl, text: upgradeText, fill: upgradeFill } };
+  const main = h('section', { class: 'main' }, topbar, stage, dock);
+  const root = h('div', { class: 'app', 'data-sidebar': 'closed' }, sidebar, scrim, main);
+
+  return {
+    root,
+    chatList,
+    newChatButton,
+    menuButton,
+    scrim,
+    badge,
+    announce,
+    empty,
+    modePicker,
+    chipsBox,
+    chatTitle,
+    stage,
+    talk,
+    talkBadge,
+    wave,
+    status,
+    typeForm,
+    typeInput,
+    settingsButton,
+    modeButtons,
+    upgrade: { el: upgradeEl, text: upgradeText, fill: upgradeFill },
+  };
 }
 
-/** Reflect connectivity in the badge and the Airplane Mode Test callout. */
+/** Reflect connectivity in the badge and the Airplane Mode Test announcement. */
 export function renderConnectivity(layout: Layout, online: boolean, ready: boolean): void {
   layout.badge.dataset.online = String(online);
-  layout.badge.replaceChildren(
-    icon(online ? 'shield' : 'wifiOff'),
-    h('span', {}, online ? '100% local' : 'Offline'),
-    h('span', { class: 'label-long' }, online ? ' · on-device AI' : ' · still working'),
-  );
+  layout.badge.replaceChildren(h('span', { class: 'dot', 'aria-hidden': 'true' }), h('span', {}, online ? '100% local' : 'Offline · still working'));
   layout.badge.title = online
     ? 'All inference runs on your device. The network is only used once, to download models.'
     : 'You are offline. Loom keeps working because everything runs locally.';
 
-  if (layout.callout.hidden) return;
-  layout.callout.dataset.offline = String(!online);
-  const dismiss = h('button', { class: 'icon-btn', 'aria-label': 'Dismiss', onclick: () => (layout.callout.hidden = true) }, icon('close'));
-
-  const [title, body] = !online
-    ? ready
-      ? ['You’re offline — and Loom is still listening.', 'No network, no servers, no API keys. Every word you hear is generated right here on your GPU.']
-      : ['You’re offline.', 'Loom needs to download its models once before it can run offline. Reconnect to finish setting up.']
-    : ['✈ Airplane Mode Test', 'Once Loom is ready, turn off your wifi (or switch on airplane mode) and keep talking. It works exactly the same — because nothing ever leaves this device.'];
-
-  layout.callout.replaceChildren(
-    h('span', { class: 'callout-icon' }, icon(online ? 'plane' : 'wifiOff')),
-    h('div', {}, h('h2', {}, title), h('p', {}, body)),
-    dismiss,
+  layout.announce.dataset.offline = String(!online);
+  layout.announce.replaceChildren(
+    icon(online ? 'plane' : 'wifiOff'),
+    h('strong', {}, online ? 'Airplane Mode Test' : 'You’re offline'),
+    h(
+      'span',
+      {},
+      online
+        ? ready
+          ? 'Turn off your wifi and keep talking'
+          : 'Once ready, turn off your wifi and keep talking'
+        : ready
+          ? 'and Loom is still listening'
+          : 'connect once to download the models',
+    ),
   );
 }
