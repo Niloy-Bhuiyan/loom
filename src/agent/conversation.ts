@@ -24,6 +24,19 @@ export interface ConversationEvents {
   onError(error: FriendlyError): void;
   /** Hands-free: the user was only pausing, so their last message (and any reply to it) is withdrawn. */
   onRetract(): void;
+  /** How fast the last completed turn was, for the "under the hood" panel. */
+  onMetrics?(metrics: TurnMetrics): void;
+}
+
+export interface TurnMetrics {
+  /** Speech-to-text time; null for typed messages. */
+  sttMs: number | null;
+  /** Prompt processing until the first token (measured by the model's worker). */
+  firstTokenMs: number | null;
+  tokens: number | null;
+  tokensPerSecond: number | null;
+  /** From the user finishing (speech ended / message sent) to Loom's first sentence going to the voice. */
+  replyStartMs: number | null;
 }
 
 /** The latest hands-free utterance, kept in case the user was only pausing. */
@@ -62,6 +75,9 @@ export class Conversation {
   private systemPrompt = SYSTEM_PROMPT;
   /** Cancels the current turn's transcription if it is still queued. */
   private sttAbort: AbortController | null = null;
+  /** When the user finished speaking or sent their message, and how long transcription took. */
+  private turnStartedAt = 0;
+  private sttMs: number | null = null;
 
   constructor(
     private stages: Stages,
@@ -193,7 +209,9 @@ export class Conversation {
   /** Transcribe, then answer. `quiet` skips the "didn't catch that" notice (background noise in hands-free). */
   private async transcribeAndReply(turn: number, audio: Float32Array, quiet: boolean): Promise<void> {
     this.sttAbort = new AbortController();
+    this.turnStartedAt = performance.now();
     const text = await this.stages.stt.transcribe(audio, this.sttAbort.signal);
+    this.sttMs = performance.now() - this.turnStartedAt;
     if (turn !== this.turn) return;
     if (!text) {
       if (!quiet) this.events.onNotice('Sorry, I didn’t catch that. Try again?');
@@ -209,6 +227,8 @@ export class Conversation {
     if (!trimmed || this.state === 'listening') return;
     this.interrupt();
     const turn = this.nextTurn();
+    this.turnStartedAt = performance.now();
+    this.sttMs = null;
     try {
       await this.reply(turn, trimmed);
     } catch (err) {
@@ -248,11 +268,13 @@ export class Conversation {
     this.events.onAssistantStart();
 
     const chunker = new SentenceChunker();
+    let replyStartMs: number | null = null;
     const say = (sentences: string[]) => {
       if (turn !== this.turn) return;
       for (const sentence of sentences) {
         const speakable = toSpeakableText(sentence);
         if (!speakable) continue;
+        replyStartMs ??= performance.now() - this.turnStartedAt;
         this.stages.tts.speak(speakable);
         this.setState('speaking');
       }
@@ -278,8 +300,23 @@ export class Conversation {
     this.events.onAssistantEnd(reply, false);
 
     say(chunker.flush());
+    this.reportMetrics(replyStartMs);
     await this.stages.tts.drain();
     this.finish(turn);
+  }
+
+  private reportMetrics(replyStartMs: number | null): void {
+    if (!this.events.onMetrics) return;
+    const stats = this.stages.llm.lastStats?.() ?? null;
+    const decodeMs = stats ? stats.totalMs - stats.firstTokenMs : 0;
+    this.events.onMetrics({
+      sttMs: this.sttMs,
+      firstTokenMs: stats?.firstTokenMs ?? null,
+      tokens: stats?.tokens ?? null,
+      // Tokens after the first, over the time spent producing them.
+      tokensPerSecond: stats && stats.tokens > 1 && decodeMs > 0 ? (stats.tokens - 1) / (decodeMs / 1000) : null,
+      replyStartMs,
+    });
   }
 
   /**

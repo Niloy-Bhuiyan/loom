@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { LanguageModel, SpeechToText, TextToSpeech } from '../pipeline/types';
-import { Conversation, type AgentState, type AudioSource, type ConversationEvents } from './conversation';
+import { Conversation, type AgentState, type AudioSource, type ConversationEvents, type TurnMetrics } from './conversation';
 
 const speech = () => new Float32Array(16_000).fill(0.2);
 
@@ -233,6 +233,30 @@ describe('Conversation', () => {
       expect(states).toEqual(['listening', 'idle']);
     });
 
+  });
+
+  it('reports how fast each turn was', async () => {
+    const ctx = setup();
+    ctx.llm.lastStats = () => ({ tokens: 21, firstTokenMs: 500, totalMs: 1500 });
+    const metrics: TurnMetrics[] = [];
+    (ctx.convo as unknown as { events: ConversationEvents }).events.onMetrics = (m) => metrics.push(m);
+
+    await ctx.convo.startListening();
+    await ctx.convo.stopListening();
+
+    expect(metrics).toHaveLength(1);
+    const [m] = metrics;
+    expect(m).toMatchObject({ firstTokenMs: 500, tokens: 21, tokensPerSecond: 20 });
+    expect(m!.sttMs).toBeGreaterThanOrEqual(0);
+    expect(m!.replyStartMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('has no speech-to-text time for typed messages', async () => {
+    const ctx = setup();
+    const metrics: TurnMetrics[] = [];
+    (ctx.convo as unknown as { events: ConversationEvents }).events.onMetrics = (m) => metrics.push(m);
+    await ctx.convo.sendText('hi');
+    expect(metrics[0]).toMatchObject({ sttMs: null, tokensPerSecond: null });
   });
 
   it('speaks a greeting without calling the model', async () => {
