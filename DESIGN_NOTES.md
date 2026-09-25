@@ -170,13 +170,95 @@ Settings also has a manual **"Use 16-bit GPU math"** switch.
 - `navigator.storage.persist()` is requested after the first successful load so
   the browser is less likely to evict ~1.7 GB of models under storage pressure.
 
+## Hands-free listening (VAD)
+
+- **Model:** Silero VAD v5 (`onnx-community/silero-vad`, 2.2 MB fp32, MIT),
+  **bundled in `public/models/`** rather than fetched: it's tiny, and bundling
+  means hands-free works on the first offline reload with no extra download.
+- **Runtime:** `onnxruntime-web/wasm` directly (Transformers.js has no Silero
+  class). It's pinned to the *exact* version Transformers.js depends on, so npm
+  dedupes it — one copy of ONNX Runtime. Single-threaded WASM is plenty for
+  one 512-sample frame every 32 ms and leaves the GPU to the big models.
+- **Silero v5 needs context.** Verified offline against real speech: prepending
+  the previous frame's last 64 samples gives clean 0.00/1.00 decisions; without
+  it pauses read as 0.70–0.95.
+- **Audio path:** AudioWorklet → `MessagePort` → VAD worker, so the main thread
+  never touches the stream. The worker resamples with a streaming "area"
+  resampler (average of covered input samples doubles as anti-aliasing).
+- **Segmenting:** speech must be confirmed for ~200 ms before "start" (so
+  coughs don't barge in), ~300 ms of pre-roll is kept, and ~800 ms of silence
+  ends the turn.
+- **Found in testing — pauses split turns.** Feeding real multi-sentence speech
+  produced three utterances for one turn ("Hello Loom." / "What is the capital
+  of France?" / …), so Loom would start answering "Hello" and get cut off.
+  Rather than making everyone wait longer after they stop, a resumed utterance
+  that arrives *before Loom starts speaking* withdraws the previous message and
+  re-transcribes both audio parts together.
+- **Echo:** `echoCancellation` is on, and while Loom is speaking the detector
+  switches to stricter thresholds (p ≥ 0.85 for ≥ 450 ms) so its own voice
+  through laptop speakers doesn't trigger a barge-in.
+
+## Fast start
+
+The biggest reason people abandon an in-browser AI demo is the first download.
+When the chosen brain isn't cached, Loom loads the 0.5B model first (≈975 MB
+total instead of ≈1.7 GB), then:
+
+1. A **prefetch worker** asks `ModelRegistry.get_pipeline_files()` which files
+   the big model needs and streams them straight into Transformers.js's own
+   Cache API bucket, keyed by the same URLs its loader uses. No GPU memory is
+   used during the download.
+2. The big model is then loaded from cache in a fresh LLM worker.
+3. It's swapped into the conversation between turns, and the small one is
+   disposed.
+
+The f16 self-test result from the small model carries over, so a GPU with
+broken f16 downloads the right (q4) weights for the big model the first time.
+
+**Pro brain:** `onnx-community/Qwen3-4B-Instruct-2507-ONNX` — the non-thinking
+2507 instruct release (no hidden reasoning phase before speech), ~2.9 GB in
+`q4f16`. Offered in settings for strong GPUs; not the default, and not
+verified end-to-end here (the test GPU is an Intel UHD 620-class iGPU).
+
+## Documents (local RAG)
+
+- **Extraction:** `pdfjs-dist` **6.x** — 5.x is affected by GHSA-hq66-cqwq-w95j
+  (arbitrary JS when opening a malicious PDF), which matters for an app whose
+  whole job is to open files people drop in. Text extraction only, no rendering,
+  and pdf.js is code-split so it only loads for people who use documents.
+- **Embeddings:** `Xenova/all-MiniLM-L6-v2`, `q8` (23 MB) on **WASM**, loaded on
+  first use; keeps the GPU free for the chat model.
+- **Chunking:** ~700-character passages, preferring paragraph/sentence breaks,
+  with ~120 characters of overlap.
+- **Found in testing — pure embedding search misses exact facts.** On a real
+  PDF, "What is the wifi password?" scored **−0.002** against the passage that
+  literally contains "Free wifi password: river123", because the passage's
+  embedding was dominated by menu items. Fixes:
+  - **hybrid ranking**: `0.65 × cosine + 0.35 × keyword overlap`;
+  - the best passage is always returned (the prompt tells the model to say when
+    the excerpts don't contain the answer);
+  - documents that fit in the ~2,200-character prompt budget are passed whole.
+
+  On a synthetic 7,100-character handbook where the prompt can hold only 31% of
+  the text, 8/8 test questions retrieved the passage containing the answer.
+- **Prompting:** excerpts are added to the *latest* user message only; the saved
+  history keeps the user's own words.
+
+## Modes and saved chats
+
+- Modes are data (`src/config/modes.ts`): a persona, a spoken greeting, and
+  starter prompts, combined with shared voice rules. "English practice" is
+  deliberately included because the English-only Whisper models suit it and
+  it's a genuinely useful reason to talk to an AI out loud every day.
+- Chats are saved to IndexedDB after the first user message, titled from it,
+  and can be reopened and continued. Documents are intentionally *not* saved
+  with chats (size, and they may be sensitive).
+
 ## Things deliberately left out
 
 - **Multi-threaded WASM.** Needs cross-origin isolation (COOP/COEP headers),
   which GitHub Pages can't set. Everything runs on WebGPU anyway, so this only
   affects small CPU-side ops.
-- **Voice activity detection / always-listening.** Push-to-talk is predictable,
-  private (the mic is released after every turn) and avoids Loom hearing itself.
 - **A CPU (WASM) fallback for the LLM.** It works technically, but at a few
   tokens per second it makes for a poor voice experience; a clear message is
   better than a frustrating demo.
