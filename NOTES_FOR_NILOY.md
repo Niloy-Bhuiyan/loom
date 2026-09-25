@@ -104,6 +104,18 @@ background download giving up on the first dropped connection.
   GPUs, and phones. Worth a quick run on your own machine — ideally Chrome on a
   laptop with headphones, then again on speakers to hear how barge-in behaves.
 
+### Third round: background download, proof panel, speed card
+
+- **Background download** verified in real Google Chrome: "Download in the
+  background" on the first-visit screen → Chrome's own download UI → service
+  worker files everything into the caches → Loom reloads and starts from disk.
+- In the Claude app's built-in browser, Background Fetch never starts; the
+  20-second watchdog correctly fell back to downloading in the tab.
+- The README screenshots were captured from a real scripted Chrome session
+  (see "How the screenshots were made" in the README). The capture script
+  lives outside the repo; it's easy to recreate with `puppeteer-core` if you
+  want fresh screenshots on a faster machine.
+
 ## Worth recording
 
 - The README has a placeholder for a demo GIF (turning wifi off

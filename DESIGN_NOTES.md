@@ -254,6 +254,46 @@ verified end-to-end here (the test GPU is an Intel UHD 620-class iGPU).
   and can be reopened and continued. Documents are intentionally *not* saved
   with chats (size, and they may be sensitive).
 
+## Getting ready for offline (Background Fetch)
+
+Problem: a first visit downloads ~1–2 GB, and a normal page download dies when
+the tab closes — useless if you want to prepare a laptop for a demo.
+
+- `offlinePlan()` lists everything a fully offline Loom needs for the current
+  settings: ears, the **chosen** brain (not just the fast-start one), voice,
+  document search, plus ONNX Runtime's WASM (Transformers.js fetches it from
+  jsDelivr) and the voice style file.
+- A manifest worker expands that into exact URLs with
+  `ModelRegistry.get_pipeline_files()` — the same URLs Transformers.js uses as
+  Cache API keys — and HEADs each for its real size (the preset sizes were
+  wrong for 32-bit weights: "723 MB of ≈670 MB").
+- Where supported (Chromium), the missing files go to
+  `registration.backgroundFetch.fetch()`. The browser shows the download in its
+  own UI and keeps going after the tab is closed; the service worker's
+  `backgroundfetchsuccess` handler files each response into the right cache.
+  Verified in Chrome: "68.7 MB of 1.1 GB saved…" through to ready.
+- **Watchdog:** an Electron-based Chromium exposed the API but never downloaded
+  a byte. If nothing arrives within 20 s the fetch is aborted, the browser is
+  remembered as unsupported, and the download continues in the tab instead.
+- The sidebar shows **Ready for offline** / what's missing, and marks models as
+  cached so the next start skips the first-run prompt and the fast-start detour.
+
+## "Under the hood" — proving it's local
+
+- **Timings come from where the work happens.** The LLM worker counts tokens
+  (`token_callback_function`) and measures time to first token and total time
+  itself, so postMessage latency doesn't skew tokens/sec. The conversation adds
+  speech-to-text time and "Loom started talking N s after you".
+- **Network counter.** The service worker sees every request from the page and
+  all its workers (dedicated workers are controlled by the page's service
+  worker) and broadcasts the ones that reach the network on a
+  `BroadcastChannel`. Counting starts when the models are ready, so the number
+  shown is exactly "requests caused by talking to Loom" — it stays at 0. In dev
+  (no service worker) it falls back to the page's resource timing entries.
+- **Speed card.** Drawn on a 1200×630 canvas (social-share size) from the last
+  measured reply, with the Web Share API where available and a download link
+  otherwise.
+
 ## Things deliberately left out
 
 - **Multi-threaded WASM.** Needs cross-origin isolation (COOP/COEP headers),
