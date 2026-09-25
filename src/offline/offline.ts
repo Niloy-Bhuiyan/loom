@@ -84,6 +84,11 @@ export async function downloadInBackground(urls: string[], onProgress: (p: Downl
   return watchBackgroundFetch(registration, onProgress);
 }
 
+/** Is a background download still in progress (e.g. started before the tab was closed)? */
+export async function hasBackgroundDownload(): Promise<boolean> {
+  return Boolean(await (await backgroundFetchManager())?.get(FETCH_ID));
+}
+
 /** If a background download is running (e.g. started before a reload), follow it. */
 export async function resumeBackgroundDownload(onProgress: (p: DownloadProgress) => void): Promise<'done' | 'failed' | null> {
   const registration = await (await backgroundFetchManager())?.get(FETCH_ID);

@@ -299,6 +299,79 @@ svg {
   border-top: 1px solid var(--border);
 }
 
+/* "Ready for offline" row */
+.offline-status {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--border);
+  font-size: 0.8rem;
+}
+
+.offline-status[hidden] {
+  display: none;
+}
+
+.offline-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--chip);
+}
+
+.offline-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.offline-status[data-state='ready'] .offline-icon {
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  color: var(--ok);
+}
+
+.offline-status[data-state='failed'] .offline-icon {
+  background: color-mix(in srgb, var(--rec) 12%, transparent);
+  color: var(--rec);
+}
+
+.offline-status[data-state='downloading'] .offline-icon svg,
+.offline-status[data-state='checking'] .offline-icon svg {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.offline-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.offline-text strong {
+  font-weight: 600;
+}
+
+.offline-text span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.offline-action {
+  flex: none;
+  min-height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--pill);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
 .side-link {
   display: flex;
   gap: 10px;
@@ -1315,6 +1388,14 @@ svg {
 
 .stage-row[data-status='error'] .stage-phase {
   color: var(--rec);
+}
+
+.bg-progress {
+  width: 100%;
+}
+
+.stages[hidden] {
+  display: none;
 }
 
 .loader-foot {

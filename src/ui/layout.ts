@@ -32,6 +32,8 @@ export interface Layout {
   typeForm: HTMLFormElement;
   typeInput: HTMLInputElement;
   settingsButton: HTMLButtonElement;
+  /** "Ready for offline" indicator in the sidebar. */
+  offlineStatus: HTMLElement;
   modeButtons: Record<TalkMode, HTMLButtonElement>;
   upgrade: { el: HTMLElement; text: HTMLElement; fill: HTMLElement };
 }
@@ -41,13 +43,14 @@ export function buildLayout(): Layout {
   const newChatButton = h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'New chat', title: 'New chat' }, icon('plus'));
   const chatList = h('nav', { class: 'chat-list', 'aria-label': 'Your chats' });
   const settingsButton = h('button', { type: 'button', class: 'side-link' }, icon('settings'), h('span', {}, 'Models & voice'));
+  const offlineStatus = h('div', { class: 'offline-status', role: 'status', hidden: true });
   const sidebar = h(
     'aside',
     { class: 'sidebar', id: 'sidebar' },
     h('div', { class: 'sidebar-head' }, h('div', { class: 'brand' }, faceSvg('var(--ink)', 26), h('span', {}, 'Loom')), newChatButton),
     h('p', { class: 'side-label' }, 'Chats'),
     chatList,
-    h('div', { class: 'sidebar-foot' }, settingsButton, h('p', { class: 'side-note' }, icon('shield'), 'Chats are saved on this device only.')),
+    h('div', { class: 'sidebar-foot' }, offlineStatus, settingsButton, h('p', { class: 'side-note' }, icon('shield'), 'Chats are saved on this device only.')),
   );
   const scrim = h('div', { class: 'scrim', 'aria-hidden': 'true' });
 
@@ -140,6 +143,7 @@ export function buildLayout(): Layout {
     typeForm,
     typeInput,
     settingsButton,
+    offlineStatus,
     modeButtons,
     upgrade: { el: upgradeEl, text: upgradeText, fill: upgradeFill },
   };
