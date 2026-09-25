@@ -1,6 +1,7 @@
 import { env, ModelRegistry } from '@huggingface/transformers';
 import { PHASE_DOWNLOADING } from '../core/progress';
 import { serveWorker, type LoadContext } from '../workers/host';
+import { hubUrl } from '../workers/hub-url';
 
 export interface PrefetchConfig {
   task: string;
@@ -32,7 +33,7 @@ serveWorker<PrefetchConfig, never, never, never>({
 
 async function download(model: string, file: string, cache: Cache, ctx: LoadContext): Promise<void> {
   // Same URL Transformers.js uses as the cache key, so its loader finds these files later.
-  const url = `${env.remoteHost}${env.remotePathTemplate.replace('{model}', model).replace('{revision}', 'main')}${file}`;
+  const url = hubUrl(model, file);
   const cached = await cache.match(url);
   if (cached) {
     const size = Number(cached.headers.get('content-length')) || 0;
