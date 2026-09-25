@@ -281,8 +281,8 @@ trackers are loaded.
   hands-free mode it stays open (like a call) until you tap to end.
 - Documents are read, indexed and searched in the tab and are never uploaded;
   they're forgotten when you close it.
-- Saved chats live in this browser's IndexedDB only. Delete them from the chats
-  drawer (☰ → Delete all chats) or by clearing site data.
+- Saved chats live in this browser's IndexedDB only. Delete one with the trash
+  icon next to it in the sidebar, or all of them by clearing site data.
 - Settings are stored in `localStorage`; model files in the Cache API. Use
   **Settings → Clear downloaded models** to remove them.
 
