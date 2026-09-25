@@ -1467,7 +1467,7 @@ svg {
 
 .stage-row {
   display: grid;
-  grid-template-columns: 40px 1fr;
+  grid-template-columns: 40px minmax(0, 1fr);
   gap: 12px;
   align-items: center;
   padding: 12px;
@@ -1515,6 +1515,7 @@ svg {
 }
 
 .stage-model {
+  min-width: 0;
   overflow: hidden;
   color: var(--muted);
   font-size: 0.82rem;
@@ -1833,6 +1834,10 @@ details pre {
 }
 
 @media (max-width: 560px) {
+  .card {
+    padding: 22px 18px;
+  }
+
   .local-badge span:last-child {
     display: none;
   }
