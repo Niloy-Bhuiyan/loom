@@ -14,6 +14,8 @@ export interface Layout {
   scrim: HTMLElement;
   /** "100% local" / "Offline" indicator. */
   badge: HTMLElement;
+  /** Opens the "Under the hood" panel. */
+  proofButton: HTMLButtonElement;
   /** The "Airplane Mode Test" announcement above the headline. */
   announce: HTMLElement;
   empty: HTMLElement;
@@ -58,7 +60,12 @@ export function buildLayout(): Layout {
   const menuButton = h('button', { type: 'button', class: 'icon-btn menu-btn', 'aria-label': 'Open chats', 'aria-controls': 'sidebar', 'aria-expanded': 'false' }, icon('menu'));
   const chatTitle = h('div', { class: 'chat-title' });
   const badge = h('span', { class: 'local-badge', 'data-online': 'true' });
-  const topbar = h('header', { class: 'topbar' }, menuButton, chatTitle, h('div', { class: 'topbar-right' }, installButton(), badge));
+  const proofButton = h(
+    'button',
+    { type: 'button', class: 'icon-btn proof-toggle', 'aria-label': 'Under the hood', title: 'Under the hood: live speed and network proof', 'aria-controls': 'proof-panel', 'aria-expanded': 'false' },
+    icon('gauge'),
+  );
+  const topbar = h('header', { class: 'topbar' }, menuButton, chatTitle, h('div', { class: 'topbar-right' }, installButton(), badge, proofButton));
 
   // ── Welcome screen ──
   const announce = h('p', { class: 'announce' });
@@ -130,6 +137,7 @@ export function buildLayout(): Layout {
     menuButton,
     scrim,
     badge,
+    proofButton,
     announce,
     empty,
     modePicker,
