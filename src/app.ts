@@ -1,4 +1,4 @@
-import { Conversation, type AgentState } from './agent/conversation';
+import { Conversation, type AgentState, type TurnMetrics } from './agent/conversation';
 import { MicRecorder } from './audio/recorder';
 import { findStt, LIGHTEST_LLM, SUPERTONIC_APPROX_MB, SUPERTONIC_MODEL, type LlmPreset } from './config/models';
 import { saveSettings, type Settings, type TalkMode } from './config/settings';
@@ -32,6 +32,9 @@ import { renderChatTitle, renderModePicker, renderSuggestions } from './ui/modes
 import { OfflineManager, type OfflineState } from './offline/manager';
 import { canDownloadInBackground, hasBackgroundDownload } from './offline/offline';
 import { renderOfflineStatus } from './ui/offline-status';
+import { NetMonitor } from './core/net-monitor';
+import { ProofPanel } from './ui/proof-panel';
+import { openSpeedCard, renderSpeedCard } from './ui/speed-card';
 
 const MAX_DOWNLOAD_RETRIES = 2;
 
@@ -66,11 +69,17 @@ export class App {
   private brain: BrainPlan;
   /** An upgraded brain waiting for a quiet moment to be swapped in. */
   private pendingLlm: LanguageModel | null = null;
+  /** Name of the brain currently answering (changes after a background upgrade). */
+  private brainLabel = '';
   private tts: TextToSpeech;
   private conversation: Conversation;
   private handsFree: HandsFree;
   private waveform: Waveform;
   /** Loom's animated face inside the voice orb; bobs with its voice (a gentle pulse if the engine can't report levels). */
+  /** Live proof panel: timings, speed, hardware, and network use since ready. */
+  private net = new NetMonitor();
+  private proof = new ProofPanel(() => void this.shareSpeed());
+  private lastMetrics: TurnMetrics | null = null;
   private face = new LiveFace(() => this.tts.level?.() ?? 0.2 + 0.15 * Math.sin(performance.now() / 110));
   private chats = new ChatStore();
   /** The saved chat being continued; created on the first thing the user says. */
@@ -99,6 +108,7 @@ export class App {
     this.stt = new WhisperSTT(findStt(settings.stt));
     this.brain = planBrain(settings.llm, (model) => areModelsCached([model]));
     this.llm = this.createLlm(this.brain.initial);
+    this.brainLabel = this.brain.initial.label;
     this.tts = createTts(settings);
     this.offline = new OfflineManager(settings, caps.shaderF16, (state) => this.renderOffline(state));
 
@@ -116,6 +126,10 @@ export class App {
       },
       onNotice: (t) => this.transcript.addNotice(t),
       onError: (e) => this.showRuntimeError(e),
+      onMetrics: (m) => {
+        this.lastMetrics = m;
+        this.proof.setMetrics(m);
+      },
       onRetract: () => {
         this.transcript.retractLastUser();
         this.persistChat();
@@ -144,6 +158,11 @@ export class App {
     this.docsUi.mount(this.layout.root);
     this.layout.talk.prepend(this.face.el);
     this.face.start();
+    this.layout.root.append(this.proof.el);
+    this.net.onChange(() => this.proof.setNetwork(this.net.sinceReady, this.net.ready));
+    this.net.start();
+    this.proof.setNetwork([], false);
+    this.renderSystemInfo();
     this.bindControls();
     this.renderModeSwitch();
     this.renderModes();
@@ -294,6 +313,7 @@ export class App {
     }
     this.tts = fallback;
     this.conversation.setTts(fallback);
+    this.renderSystemInfo();
     loader.status('tts', 'ready', `Using fallback: ${describeTts(fallback)}`);
     this.transcript.addNotice(
       fallback instanceof SilentTTS
@@ -308,6 +328,9 @@ export class App {
     this.layout.typeInput.disabled = false;
     this.renderModes();
     renderConnectivity(this.layout, navigator.onLine, true);
+    // From here on, a conversation should cause zero network requests.
+    this.net.markReady();
+    this.renderSystemInfo();
     this.renderState('idle');
     // Check offline readiness once nothing else is downloading (after an upgrade, see swapBrainIfIdle).
     if (this.brain.upgradeTo) void this.startBrainUpgrade(this.brain.upgradeTo);
@@ -359,7 +382,31 @@ export class App {
     old.dispose();
     this.layout.upgrade.el.hidden = true;
     this.transcript.addNotice(`Brain upgraded — now using ${this.brain.upgradeTo?.label ?? 'the bigger model'}.`);
+    this.brainLabel = this.brain.upgradeTo?.label ?? this.brainLabel;
+    this.renderSystemInfo();
     void this.offline.refresh();
+  }
+
+  private renderSystemInfo(): void {
+    this.proof.setSystem({
+      gpu: this.caps.adapterName ?? 'WebGPU adapter',
+      precision: this.caps.shaderF16 && this.settings.f16 ? '16-bit weights' : '32-bit weights',
+      ears: findStt(this.settings.stt).label,
+      brain: this.brainLabel,
+      voice: describeTts(this.tts),
+    });
+  }
+
+  private async shareSpeed(): Promise<void> {
+    const m = this.lastMetrics;
+    if (!m || m.tokensPerSecond === null) return;
+    const blob = await renderSpeedCard({
+      tokensPerSecond: m.tokensPerSecond,
+      replyStartMs: m.replyStartMs,
+      gpu: this.caps.adapterName ?? 'WebGPU',
+      brain: this.brainLabel,
+    });
+    openSpeedCard(blob);
   }
 
   // ───────────────────────── Interaction ─────────────────────────
@@ -394,6 +441,10 @@ export class App {
     this.layout.menuButton.addEventListener('click', () => this.setSidebarOpen(this.layout.root.dataset.sidebar !== 'open'));
     this.layout.scrim.addEventListener('click', () => this.setSidebarOpen(false));
     this.layout.settingsButton.addEventListener('click', () => this.openSettings());
+    this.layout.proofButton.addEventListener('click', () => {
+      this.proof.toggle();
+      this.layout.proofButton.setAttribute('aria-expanded', String(this.proof.isOpen));
+    });
   }
 
   private async setTalkMode(mode: TalkMode): Promise<void> {

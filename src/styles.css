@@ -1170,6 +1170,177 @@ svg {
   opacity: 0.4;
 }
 
+/* ───────────────────────── Under the hood (proof panel) ───────────────────────── */
+.proof {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(360px, calc(100vw - 24px));
+  padding: 18px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  animation: slide-left 0.25s var(--ease);
+}
+
+.proof[hidden] {
+  display: none;
+}
+
+@keyframes slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+.proof-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.proof-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.proof-intro {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.proof-card {
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--subtle);
+}
+
+.proof-card h3 {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.proof-count {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.proof-big {
+  font-size: 3rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.proof[data-clean='true'] .proof-big {
+  color: var(--ok);
+}
+
+.proof-count span:last-child {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.proof-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.proof-list {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+}
+
+.proof-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--mono);
+}
+
+.proof-list time {
+  color: var(--muted);
+}
+
+.proof-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.proof-grid dt {
+  color: var(--muted);
+}
+
+.proof-grid dd {
+  margin: 0;
+  font-weight: 500;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.proof-system dd {
+  overflow: hidden;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proof-grid .proof-note {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.proof-share {
+  margin-top: auto;
+}
+
+.proof-share:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.speed-card {
+  width: min(100%, 680px);
+}
+
+.speed-preview {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.proof-toggle[aria-expanded='true'] {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
 /* ───────────────────────── Overlays: loader, dialogs, settings ───────────────────────── */
 .overlay {
   position: fixed;
@@ -1238,6 +1409,7 @@ svg {
   background: var(--chip);
   font-size: 0.92rem;
   font-weight: 500;
+  text-decoration: none;
   transition: background 0.15s var(--ease), opacity 0.15s;
 }
 
