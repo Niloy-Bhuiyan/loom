@@ -10,9 +10,13 @@ and keep talking.
 
 <!-- TODO: record and embed a demo GIF here showing wifi being turned off mid-conversation -->
 
-- 🎙️ **Speech in** — Whisper (speech-to-text) on WebGPU
-- 🧠 **Local reasoning** — Qwen2.5 1.5B Instruct on WebGPU
-- 🔊 **Speech out** — Supertonic neural text-to-speech on WebGPU
+- 📞 **Hands-free, like a phone call** — just talk; on-device voice detection (Silero VAD) knows when you start, pause and finish, and you can cut Loom off mid-sentence
+- 📄 **Talk to your documents** — drop in a PDF or text file and ask about it out loud; it's read, indexed and searched entirely on your device
+- 🎭 **Modes** — Assistant, **English practice** (gentle corrections), **Interview coach**, **Story time** and **Brainstorm**
+- 💾 **Saved chats** — conversations are kept in your browser (IndexedDB), never uploaded
+- ⚡ **Fast start** — starts talking with a light model while the smarter one downloads in the background, then swaps it in
+- 📲 **Installable** — add Loom to your desktop or home screen and use it like an offline app
+- 🎙️ **Speech in** — Whisper on WebGPU · 🧠 **Reasoning** — Qwen2.5 (up to Qwen3 4B) on WebGPU · 🔊 **Speech out** — Supertonic neural TTS on WebGPU
 - ✈️ **Offline after first load** — models, runtime and app shell are all cached
 - 🧩 **Swappable stages** — each model sits behind a small TypeScript interface
 
@@ -24,9 +28,11 @@ Requires Node.js 20.19+ (or 22.12+) and a [WebGPU-capable browser](#hardware--br
 npm install && npm run dev
 ```
 
-Open the printed `http://localhost:5173` URL, click **Download & start**, and
-wait for the one-time model download (≈1.7 GB with the defaults, ≈0.9 GB with
-the light models). Then hold the mic button (or hold <kbd>Space</kbd>) and talk.
+Open the printed `http://localhost:5173` URL and click **Download & start**. The
+first visit downloads about 0.9 GB so you can start talking with the light
+brain; the default brain (~1.2 GB) then downloads in the background and takes
+over automatically. Tap the big button and just talk — or switch to
+**Push to talk** and hold the button (or <kbd>Space</kbd>) instead.
 
 ### The Airplane Mode Test
 
@@ -78,6 +84,36 @@ Other scripts:
 5. **Barge-in.** Start talking while Loom is thinking or speaking and it stops
    immediately (the LLM is interrupted and queued audio is dropped).
 
+### Hands-free listening
+
+In hands-free mode the mic stream goes straight from an AudioWorklet to a small
+worker running **Silero VAD** (2 MB, bundled with the app, run on WASM). It
+decides when you start and stop talking — no button. Details that make it feel
+natural:
+
+- Speech must last ~200 ms before it counts, so coughs and clicks are ignored,
+  and ~300 ms of audio before that point is kept so first syllables aren't cut.
+- ~0.8 s of silence ends your turn. If you keep talking *before Loom starts
+  answering*, it treats that as a pause: the half-heard message is withdrawn
+  and both parts are transcribed together.
+- While Loom is speaking, the detector demands clearer, longer speech before
+  it lets you interrupt, so Loom's own voice through your speakers doesn't
+  cut itself off. (Headphones make this perfect.)
+
+### Talk to your documents
+
+Drop a PDF, `.txt` or `.md` file anywhere on the page (or use the 📎 button):
+
+1. **pdf.js** extracts the text in the browser (loaded only when needed).
+2. The text is split into overlapping, sentence-aligned passages.
+3. A 23 MB **MiniLM** embedding model turns each passage into a vector (CPU/WASM,
+   so it doesn't compete with the chat model for GPU memory).
+4. For each question, passages are ranked by a **hybrid** of embedding similarity
+   and keyword overlap; the best few are added to the prompt. Short documents
+   are simply given to the model whole.
+
+The file never leaves the tab. Documents stay loaded for the session.
+
 ### Why it's all local
 
 - Inference happens in Web Workers using WebGPU compute shaders on your GPU.
@@ -95,24 +131,44 @@ Other scripts:
 ```
 src/
   pipeline/types.ts      SpeechToText, LanguageModel, TextToSpeech interfaces
-  agent/                 Conversation orchestration + prompt
+  agent/                 Conversation orchestration (turns, barge-in, pauses) + prompts
   stt/                   Whisper worker + client
-  llm/                   Text-generation worker + client
+  llm/                   Text-generation worker, f16 self-test, fast start, background prefetch
   tts/                   Supertonic worker + client, Web Speech fallback, factory
-  audio/                 Mic capture, resampling, PCM playback
+  vad/                   Silero VAD worker, speech segmenter, hands-free controller
+  docs/                  PDF/text extraction, chunking, embeddings, hybrid search
+  chats/                 Saved conversations (IndexedDB)
+  audio/                 Mic capture, streaming resampler, PCM playback
   workers/               Shared worker message protocol
   core/                  Capability detection, errors, progress, caching, text utils
-  ui/                    Layout, transcript, waveform, loader, dialogs, settings
-  config/                Model presets and persisted settings
+  ui/                    Layout, transcript, waveform, loader, dialogs, settings, drawers
+  config/                Model presets, modes and persisted settings
 ```
+
+## Modes
+
+Pick one on the welcome screen; Loom greets you out loud and suggests how to start.
+
+| Mode | What it's for |
+| --- | --- |
+| 💬 Assistant | General questions, privately |
+| 🗣️ English practice | Speak English; Loom gently rephrases mistakes, then keeps the conversation going |
+| 🎯 Interview coach | One interview question at a time, with a strength and an improvement after each answer |
+| 📖 Story time | Make up stories together, a few sentences at a time |
+| 💡 Brainstorm | Two or three concrete ideas at a time, plus a question to go deeper |
+
+Modes are just a persona prompt and starter prompts in
+[`src/config/modes.ts`](src/config/modes.ts) — adding one takes a few lines.
 
 ## Models (and how to swap them)
 
 | Stage | Default | Size (download) | Alternatives in settings |
 | --- | --- | --- | --- |
 | Speech-to-text | `onnx-community/whisper-base.en` | ~210 MB | `whisper-tiny.en` (~120 MB), `whisper-small.en` (~590 MB) |
-| Language model | `onnx-community/Qwen2.5-1.5B-Instruct` (q4f16) | ~1.2 GB | `Qwen2.5-0.5B-Instruct` (~500 MB) |
+| Language model | `onnx-community/Qwen2.5-1.5B-Instruct` (q4f16) | ~1.2 GB | `Qwen2.5-0.5B-Instruct` (~500 MB, also the fast-start brain), `Qwen3-4B-Instruct-2507` (~2.9 GB, "pro") |
 | Text-to-speech | `onnx-community/Supertonic-TTS-ONNX` | ~265 MB | Built-in browser voice (on-device voices only) |
+| Voice detection | Silero VAD v5 (bundled) | 2 MB | — |
+| Document search | `Xenova/all-MiniLM-L6-v2` (q8, on demand) | 23 MB | — |
 
 The **text-to-speech engine actually used by default is Supertonic**, a neural
 TTS model running locally through Transformers.js. The browser's Web Speech
@@ -214,15 +270,19 @@ only to download files once:
 | `huggingface.co` (+ its CDN) | Model weights, tokenizers, voice styles | No |
 | `cdn.jsdelivr.net` | ONNX Runtime WebAssembly glue used by Transformers.js | No |
 
-Everything is then served from the browser cache. No fonts, analytics or
+Everything is then served from the browser cache. The voice detector (Silero
+VAD) and PDF reader (pdf.js) ship with the app itself. No fonts, analytics or
 trackers are loaded.
 
 ## Privacy
 
 - Audio never leaves the tab: it's captured, transcribed and discarded locally.
-- The microphone is released after every turn, so the browser's recording
-  indicator is only on while you're talking.
-- Conversation history lives in memory only and is gone when you close the tab.
+- In push-to-talk mode the microphone is released after every turn. In
+  hands-free mode it stays open (like a call) until you tap to end.
+- Documents are read, indexed and searched in the tab and are never uploaded;
+  they're forgotten when you close it.
+- Saved chats live in this browser's IndexedDB only. Delete them from the chats
+  drawer (☰ → Delete all chats) or by clearing site data.
 - Settings are stored in `localStorage`; model files in the Cache API. Use
   **Settings → Clear downloaded models** to remove them.
 
