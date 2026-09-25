@@ -7,9 +7,14 @@ Things worth knowing that aren't obvious from the code.
 - **No API keys, no paid services, no mocked components.** All three stages run
   real models locally.
 - External hosts contacted (downloads only, no keys):
-  - `huggingface.co` — model weights, tokenizers, Supertonic voice styles.
+  - `huggingface.co` — model weights, tokenizers, Supertonic voice styles,
+    the document-search embedding model.
   - `cdn.jsdelivr.net` — ONNX Runtime's WebAssembly glue, fetched by
     Transformers.js by default and then cached in the browser.
+- Bundled with the app (no download): the Silero VAD model (MIT) and pdf.js.
+- New dependencies: `onnxruntime-web` (pinned to the version Transformers.js
+  uses, so it's not duplicated) and `pdfjs-dist` 6.x (5.x has a known
+  "malicious PDF runs JavaScript" vulnerability).
 
 ## One manual step: enable GitHub Pages
 
@@ -63,9 +68,41 @@ Supertonic):
   self-tests and falls back to 32-bit weights automatically — see
   `DESIGN_NOTES.md`.
 
-Not verified here: the default 1.5B model end-to-end (only its files/sizes were
-checked), a physical microphone, Safari/Firefox, and discrete GPUs. Worth a
-quick run on your own machine.
+### The "level-up" features (second round)
+
+Also tested in the browser on the same Intel iGPU, with real speech
+(a Windows TTS recording played into a fake microphone):
+
+- **Hands-free:** Silero VAD detected speech ~1 s in; three sentences spoken
+  with natural pauses were merged into one message ("Hello, Loom, what is the
+  capital of France? I would like a short answer please."), Loom replied
+  "The capital of France is Paris." out loud and went back to listening.
+- **Documents:** a dropped PDF was read and indexed on-device; asking "What is
+  the wifi password here?" got "The wifi password is river123." On a longer
+  synthetic handbook, 8/8 questions retrieved the right passage.
+- **Modes:** picking English practice switched persona and suggestions, and
+  Loom spoke the greeting.
+- **Saved chats:** conversations were saved automatically, listed in the
+  drawer ("English practice · 1 h ago") and reopened with mode and history.
+- **Fast start:** a fresh visit with the default 1.5B brain started on the
+  0.5B brain and began downloading the 1.5B one in the background.
+- **Download auto-retry:** the loader showed "Connection dropped — retrying"
+  and recovered during a real network drop.
+
+Found and fixed during this testing (details in `DESIGN_NOTES.md`): pauses
+splitting one turn into several; exact-term document questions missed by pure
+embedding search; stale transcriptions delaying a merged turn by ~18 s; the
+background download giving up on the first dropped connection.
+
+### Not verified here
+
+- The background upgrade actually **completing and swapping in**: the test
+  network kept dropping, and this embedded browser can't store files that large
+  in its cache, so it failed and correctly fell back to the light brain (the
+  retry fix came after that run).
+- The Qwen3 4B "pro" brain, a physical microphone, Safari/Firefox, discrete
+  GPUs, and phones. Worth a quick run on your own machine — ideally Chrome on a
+  laptop with headphones, then again on speakers to hear how barge-in behaves.
 
 ## Worth recording
 
